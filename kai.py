@@ -25,7 +25,7 @@ OUTPUT_FILE = "response.mp3"
 async def speak(text):
 
     if text:
-        print(f"\nKAI (speaking): {text}")
+        print(f" ~\n KAI (speaking): {text}")
         communicate = edge_tts.Communicate(text, VOICE)
         await communicate.save(OUTPUT_FILE)
         playsound(OUTPUT_FILE)
@@ -49,7 +49,7 @@ def listen_for_command():
 async def main():
     """Main asynchronous loop for the voice assistant."""
     wake_word = "kai"
-    await speak("Edge TTS assistant is online.")
+    await speak("Kinetic AI interface online and ready.")
 
     loop = asyncio.get_running_loop()
 
@@ -82,4 +82,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\nAssistant shut down.")
+        print(" \n Assistant shut down.")
