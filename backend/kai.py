@@ -5,7 +5,7 @@ import asyncio
 import edge_tts
 from playsound import playsound
 
-# --- SETUP ---
+
 recognizer = sr.Recognizer()
 
 try:
@@ -33,7 +33,7 @@ async def speak(text):
 
 
 def listen_for_command():
-    # This is a synchronous function, so we'll run it in an executor
+    # run this using an executer because ot is a syncronous funtion and bloacking action and rescources
     with sr.Microphone() as source:
         print("Listening...")
         recognizer.adjust_for_ambient_noise(source)
@@ -47,7 +47,7 @@ def listen_for_command():
 
 
 async def main():
-    """Main asynchronous loop for the voice assistant."""
+ # main funtion that keeps the voice assistant running and listening for wake command
     wake_word = "kai"
     await speak("Kinetic AI interface online and ready.")
 
