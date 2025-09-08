@@ -25,5 +25,14 @@ def run_kai():
     except subprocess.CalledProcessError as e:
         return f'Error executing KAI script: {e.stderr}'
     
+@app.route('/sleep')
+def sleep():
+    try:
+        result = subprocess.Popen([sys.executable, 'sleep.py'],)
+        return f'Sleep script executed successfully. Output: {result.stdout}' 
+        
+    except subprocess.CalledProcessError as e:
+        return f'Error executing Sleep script: {e.stderr}'
+    
 if __name__ == '__main__':
     app.run(debug=True)
