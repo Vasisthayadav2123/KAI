@@ -3,10 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <title>My Flask App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
 </head>
 <body>
     <h1>Welcome to My Website!</h1>
     <p>This page is being served by a Flask template.</p>
-    <input>enter the command </input><button>submit</button>
+    <label for="commandInput">Enter the command:</label>
+    <div id="commandSection">    
+        <input type="text" id="commandInput" name="command">
+        <button type="button" onclick="handleSubmit()">Submit</button>
+        <script src="{{ url_for('static', filename='javascript/index.js') }}"></script>
+    </div>
+    <p id="response"></p>
+
 </body>
 </html>

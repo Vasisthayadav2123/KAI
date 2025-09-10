@@ -1,6 +1,7 @@
-from flask import Flask ,render_template
+from flask import Flask ,render_template, request, jsonify
 import subprocess
 import sys
+
 
 # Create an instance of the Flask class
 app = Flask(__name__)
@@ -9,6 +10,14 @@ app = Flask(__name__)
 @app.route('/')
 def hello_world():
     return render_template('index.html')
+
+@app.route('/process',methods=['POST'])
+def process_command():
+    data = request.get_json()
+    user_data= data.get('command')
+    print(user_data)
+    return jsonify({'status': 'success' })
+
 
 # This block allows you to run the app directly
 
