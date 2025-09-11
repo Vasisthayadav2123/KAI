@@ -9,6 +9,7 @@ import webbrowser
 import json
 import re
 from playsound import playsound
+from dotenv import load_dotenv
 
 recognizer = sr.Recognizer()
 VOICE = "en-US-SteffanNeural"
