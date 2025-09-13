@@ -14,8 +14,8 @@ def hello_world():
 @app.route('/process',methods=['POST'])
 def process_command():
     data = request.get_json()
-    user_data= data.get('command')
-    print(user_data)
+    user_input= data.get('command')
+    print(user_input)
     return jsonify({'status': 'success' })
 
 

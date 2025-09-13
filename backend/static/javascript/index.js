@@ -1,19 +1,23 @@
 function handleSubmit() {
     const userInput = document.getElementById('commandInput').value;
-    
-    fetch('/process', {
-        method: 'POST',
-        headers: {
-            'content-type': 'application/json'
-        },
-        body: JSON.stringify({ command: userInput })
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Success:', data);
-    })
-    .catch((error) => {
-        console.error('Error:', error);
-    });
-    document.getElementById("response").innerText = data.status;
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/process', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                const data = JSON.parse(xhr.responseText);
+                console.log('Success:', data);
+                document.getElementById("response").innerText = data.status;
+            } else {
+                console.error('Error:', xhr.statusText);
+                document.getElementById("response").innerText = "An error occurred.";
+            }
+        }
+    };
+
+    const requestData = JSON.stringify({ command: userInput });
+    xhr.send(requestData);
 }

@@ -61,6 +61,8 @@ async def speak(text):
         await communicate.save(OUTPUT_FILE)
         playsound(OUTPUT_FILE)
         os.remove(OUTPUT_FILE)
+        
+
 
 
 #  LISTENING FUNCTION 
@@ -94,7 +96,7 @@ async def handle_tool_response(response_json):
     elif tool == "open_app":
         app_name = response_json.get("app_name")
         try:
-            # Extended mapping for common app names
+            #mapping for app and thier addresses
             app_paths = {
                 "notepad": "notepad.exe",
                 "chrome": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -103,7 +105,8 @@ async def handle_tool_response(response_json):
                 "discord": "discord:",
                 "steam": "steam:",
                 "vscode": "code",
-                "visual studio code" : " code"
+                "visual studio code" : "code",
+                "helldivers 2" : "steam://rungameid/394510",
             }
 
             app_key = app_name.lower()
@@ -158,7 +161,7 @@ async def main():
 
                 if user_input:
                     if any(phrase in user_input for phrase in ["that's all", "goodbye", "exit"]):
-                        await speak("Goodbye.")
+                        await speak("KAI shutting down. Goodbye!")
                         return
 
                     try:

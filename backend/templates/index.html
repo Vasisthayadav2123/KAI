@@ -8,13 +8,15 @@
 <body>
     <h1>Welcome to My Website!</h1>
     <p>This page is being served by a Flask template.</p>
-    <label for="commandInput">Enter the command:</label>
-    <div id="commandSection">    
-        <input type="text" id="commandInput" name="command">
-        <button type="button" onclick="handleSubmit()">Submit</button>
-        <script src="{{ url_for('static', filename='javascript/index.js') }}"></script>
-    </div>
-    <p id="response"></p>
+    <form id="commandForm" action="">
+        <label for="commandInput">Enter the command:</label>
+        <div id="commandSection">    
+            <input type="text" id="commandInput" name="command">
+            <button type="button" onclick="handleSubmit()">Submit</button>
+            <script src="{{ url_for('static', filename='javascript/index.js') }}"></script>
+        </div>
+        <p id="response"></p>
+    </form>
 
 </body>
 </html>
