@@ -20,4 +20,5 @@ function handleSubmit() {
 
     const requestData = JSON.stringify({ command: userInput });
     xhr.send(requestData);
+    document.getElementById('response').innerText = data.say;
 }

@@ -15,6 +15,7 @@ recognizer = sr.Recognizer()
 VOICE = "en-US-SteffanNeural"
 OUTPUT_FILE = "response.mp3"
 WAKE_WORD = "kai"
+load_dotenv()
 
 # GOOGLE GEMINI SETUP 
 try:
@@ -47,13 +48,12 @@ You have access to the following tools. You must format your response as a JSON 
 - Return only pure JSON.
 - Use coversation and say for general questions try not to use google search and rather speak the answer
 """
-
+# Initialize chat with system prompt
 model = genai.GenerativeModel('gemini-1.5-flash')
 chat = model.start_chat(history=[])
 chat.send_message(SYSTEM_PROMPT)
 
-
-
+# TEXT TO SPEECH FUNCTION
 async def speak(text):
     if text:
         print(f"\nKAI: {text}")
@@ -78,14 +78,14 @@ def listen_for_command():
         except (sr.UnknownValueError, sr.RequestError):
             return None
 
-
+# CLEAN JSON RESPONSE FUNCTION
 def clean_json_response(text):
     text = re.sub(r'```json\s*', '', text)
     text = re.sub(r'```\s*$', '', text)
     text = text.strip()
     return text
 
-
+# HANDLE TOOL RESPONSE FUNCTION
 async def handle_tool_response(response_json):
     tool = response_json.get("tool")
 
@@ -142,20 +142,41 @@ async def handle_tool_response(response_json):
     else:
         await speak("I'm not sure how to handle that request.")
 
+# PROCESS TEXT COMMAND FUNCTION
+async def process_text_command(user_input):
+    try:
+        response = chat.send_message(user_input)
+        raw_text = response.text.strip()
+        cleaned_text = clean_json_response(raw_text)
+
+
+        #same as for voice commands but here we return the response instead of speaking it
+        try:
+            response_json = json.loads(cleaned_text)
+            await handle_tool_response(response_json)
+            return {"status": "success", "response": response_json}
+        except json.JSONDecodeError:
+            await speak("I'm not sure I understand that command.")
+            return {"status": "error", "error": "Invalid JSON from model"}
+
+    except Exception as e:
+        await speak("An error occurred while processing your request.")
+        return {"status": "error", "error": str(e)}
+
 
 # --- MAIN FUNCTION ---
 async def main():
     await speak("Kinetic AI Interface online and ready.")
 
     loop = asyncio.get_running_loop()
-
+    # Main loop
     while True:
         print(f"\nWaiting for wake word: '{WAKE_WORD}'...")
         command = await loop.run_in_executor(None, listen_for_command)
 
         if command and WAKE_WORD in command:
             await speak("I'm listening.")
-
+            # Listen for user command
             while True:
                 user_input = await loop.run_in_executor(None, listen_for_command)
 
@@ -163,7 +184,8 @@ async def main():
                     if any(phrase in user_input for phrase in ["that's all", "goodbye", "exit"]):
                         await speak("KAI shutting down. Goodbye!")
                         return
-
+                    
+                    # sending user input to the model   
                     try:
                         response = chat.send_message(user_input)
                         raw_text = response.text.strip()

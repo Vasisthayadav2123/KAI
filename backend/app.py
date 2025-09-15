@@ -1,6 +1,9 @@
 from flask import Flask ,render_template, request, jsonify
 import subprocess
 import sys
+import asyncio
+import json
+from kai import process_text_command
 
 
 # Create an instance of the Flask class
@@ -16,7 +19,11 @@ def process_command():
     data = request.get_json()
     user_input= data.get('command')
     print(user_input)
-    return jsonify({'status': 'success' })
+    loop=asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result=loop.run_until_complete(process_text_command(user_input))
+    return jsonify(result)
+
 
 
 # This block allows you to run the app directly
