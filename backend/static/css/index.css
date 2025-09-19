@@ -8,3 +8,7 @@ body{
     text-align: center;
     display: flex;
 }
+#audio{
+    display:hidden;
+    visibility:hidden;
+}

@@ -28,6 +28,7 @@ def process_command():
 
 # This block allows you to run the app directly
 
+
 @app.route('/user/<names>')
 def greet_user(names):
     return f'Hello, {names}!'

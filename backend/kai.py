@@ -48,10 +48,14 @@ You have access to the following tools. You must format your response as a JSON 
 - Return only pure JSON.
 - Use coversation and say for general questions try not to use google search and rather speak the answer
 """
+
+
 # Initialize chat with system prompt
 model = genai.GenerativeModel('gemini-1.5-flash')
 chat = model.start_chat(history=[])
 chat.send_message(SYSTEM_PROMPT)
+
+
 
 # TEXT TO SPEECH FUNCTION
 async def speak(text):
@@ -78,12 +82,17 @@ def listen_for_command():
         except (sr.UnknownValueError, sr.RequestError):
             return None
 
+
+
 # CLEAN JSON RESPONSE FUNCTION
 def clean_json_response(text):
     text = re.sub(r'```json\s*', '', text)
     text = re.sub(r'```\s*$', '', text)
     text = text.strip()
     return text
+
+
+
 
 # HANDLE TOOL RESPONSE FUNCTION
 async def handle_tool_response(response_json):
@@ -142,6 +151,9 @@ async def handle_tool_response(response_json):
     else:
         await speak("I'm not sure how to handle that request.")
 
+
+
+
 # PROCESS TEXT COMMAND FUNCTION
 async def process_text_command(user_input):
     try:
@@ -154,14 +166,23 @@ async def process_text_command(user_input):
         try:
             response_json = json.loads(cleaned_text)
             await handle_tool_response(response_json)
-            return {"status": "success", "response": response_json}
+            return {"status": "success", 
+                    "response": response_json
+                    }
         except json.JSONDecodeError:
             await speak("I'm not sure I understand that command.")
-            return {"status": "error", "error": "Invalid JSON from model"}
+            return {"status": "error", 
+                    "error": "Invalid JSON from model"
+                    }
 
     except Exception as e:
         await speak("An error occurred while processing your request.")
-        return {"status": "error", "error": str(e)}
+        return {"status": "error",
+                 "error": str(e)
+                 }
+
+
+
 
 
 # --- MAIN FUNCTION ---
@@ -205,6 +226,8 @@ async def main():
                         print(f"Error: {e}")
                         await speak("An error occurred while processing your request.")
                         break
+
+
 
 if __name__ == "__main__":
     try:
