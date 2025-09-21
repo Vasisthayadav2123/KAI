@@ -4,10 +4,25 @@ import sys
 import asyncio
 import json
 from kai import process_text_command
-
+import threading
 
 # Create an instance of the Flask class
 app = Flask(__name__)
+
+
+
+def run_kai_script():
+    try:
+        result = subprocess.Popen([sys.executable, 'kai.py'],)
+        return f'KAI script executed successfully. Output: {result.stdout}' 
+        
+    except subprocess.CalledProcessError as e:
+        return f'Error executing KAI script: {e.stderr}'
+    
+
+
+
+
 
 # Define a route and a view function
 @app.route('/')
@@ -26,7 +41,6 @@ def process_command():
 
 
 
-# This block allows you to run the app directly
 
 
 @app.route('/user/<names>')
@@ -35,12 +49,9 @@ def greet_user(names):
 
 @app.route('/run_kai')
 def run_kai():
-    try:
-        result = subprocess.Popen([sys.executable, 'kai.py'],)
-        return f'KAI script executed successfully. Output: {result.stdout}' 
-        
-    except subprocess.CalledProcessError as e:
-        return f'Error executing KAI script: {e.stderr}'
+    #running script execution in a separate thread
+    threading.Thread(target=run_kai_script).start()
+    return 'KAI script is runnning in the background.'
     
 @app.route('/sleep')
 def sleep():

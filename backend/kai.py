@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 recognizer = sr.Recognizer()
 VOICE = "en-US-SteffanNeural"
-OUTPUT_FILE = "response.mp3"
+OUTPUT_FILE = "static\\audio\\response.mp3"
 WAKE_WORD = "kai"
 load_dotenv()
 
@@ -69,7 +69,7 @@ async def speak(text):
 
 
 
-#  LISTENING FUNCTION 
+#  LISTENING for command and tool
 def listen_for_command():
     with sr.Microphone() as source:
         print("Listening...")
@@ -115,7 +115,7 @@ async def handle_tool_response(response_json):
                 "steam": "steam:",
                 "vscode": "code",
                 "visual studio code" : "code",
-                "helldivers 2" : "steam://rungameid/394510",
+                "helldivers 2" : "c:\\Program Files (x86)\\Steam\\steamapps\\common\\Helldivers 2\\bin\\helldivers2.exe",
             }
 
             app_key = app_name.lower()
