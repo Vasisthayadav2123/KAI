@@ -10,9 +10,19 @@ function handleSubmit() {
             if (xhr.status === 200) {
                 const data = JSON.parse(xhr.responseText);
                 console.log('Success:', data);
+                const audioElm = document.getElementById("audio")
                 document.getElementById("response").innerText = data.response.say;
-                document.getElementById("audio").src = response.mp3
-                play_audio();
+                document.getElementById('response').innerText = data.say;
+                if(data.mp3){
+                    audioElm.src= data.mp3;
+                    audioElm.onended = function(){
+                        fetch('/delete_audio', {method: 'POST' })
+                    };
+                    // loading and playing the audio
+                    audioElm.load();
+                    audioElm.play();
+                }
+                
             } else {
                 console.error('Error:', xhr.statusText);
                 document.getElementById("response").innerText = "An error occurred.";
@@ -22,9 +32,5 @@ function handleSubmit() {
 
     const requestData = JSON.stringify({ command: userInput });
     xhr.send(requestData);
-    document.getElementById('response').innerText = data.say;
 }
 
-function play_audio(){
-    audio.play();
-}

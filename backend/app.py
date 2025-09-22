@@ -2,6 +2,7 @@ from flask import Flask ,render_template, request, jsonify
 import subprocess
 import sys
 import asyncio
+import os
 import json
 from kai import process_text_command
 import threading
@@ -36,11 +37,19 @@ def process_command():
     print(user_input)
     loop=asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    result=loop.run_until_complete(process_text_command(user_input))
+    result=loop.run_until_complete(process_text_command(user_input, for_browser=True))
     return jsonify(result)
 
 
-
+@app.route('/delete_audio', methods=['POST'])
+def delete_audio():
+    try:
+        os.remove("static\\audio\\response.mp3")
+        return "Audio file deleted successfully."
+    except FileNotFoundError:
+        return "Audio file not found."
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
 
 
 @app.route('/user/<names>')

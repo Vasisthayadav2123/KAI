@@ -58,13 +58,19 @@ chat.send_message(SYSTEM_PROMPT)
 
 
 # TEXT TO SPEECH FUNCTION
-async def speak(text):
+async def speak(text, for_browser=False):
     if text:
         print(f"\nKAI: {text}")
         communicate = edge_tts.Communicate(text, VOICE)
         await communicate.save(OUTPUT_FILE)
-        playsound(OUTPUT_FILE)
-        os.remove(OUTPUT_FILE)
+        if for_browser:
+            # Just return the path for browser playback
+            return OUTPUT_FILE
+        else:
+            # Play and remove for local script
+            playsound(OUTPUT_FILE)
+            os.remove(OUTPUT_FILE)
+        
         
 
 
@@ -95,12 +101,13 @@ def clean_json_response(text):
 
 
 # HANDLE TOOL RESPONSE FUNCTION
-async def handle_tool_response(response_json):
+async def handle_tool_response(response_json , for_browser=False):
     tool = response_json.get("tool")
+    audio_path = None
 
     if tool == "get_time":
         now = datetime.datetime.now().strftime("%I:%M %p")
-        await speak(f"The current time is {now}.")
+        await speak(f"The current time is {now}.",for_browser=for_browser)
 
     elif tool == "open_app":
         app_name = response_json.get("app_name")
@@ -130,32 +137,34 @@ async def handle_tool_response(response_json):
 
                 subprocess.Popen(app_name, shell=True)
 
-            await speak(f"Opening {app_name}.")
+            audio_path=await speak(f"Opening {app_name}.",for_browser=for_browser)
 
         except Exception as e:
-            await speak(f"I couldn't open {app_name}. You might need to install it or check the path.")
+            audio_path=await speak(f"I couldn't open {app_name}. You might need to install it or check the path.",for_browser=for_browser)
 
     elif tool == "search_web":
         query = response_json.get("query")
         url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
         try:
             webbrowser.open(url)
-            await speak(f"Searching the web for {query}.")
+            audio_path=await speak(f"Searching the web for {query}.",for_browser=for_browser)
         except Exception as e:
-            await speak(f"Failed to open browser. Error: {e}")
+            audio_path=await speak(f"Failed to open browser. Error: {e}",for_browser=for_browser)
 
     elif tool == "conversation":
         say = response_json.get("say", "At your service.")
-        await speak(say)
+        audio_path=await speak(say,for_browser=for_browser)
 
     else:
-        await speak("I'm not sure how to handle that request.")
+        audio_path=await speak("I'm not sure how to handle that request.",for_browser=for_browser)
+
+    return audio_path
 
 
 
 
 # PROCESS TEXT COMMAND FUNCTION
-async def process_text_command(user_input):
+async def process_text_command(user_input,for_browser=False):
     try:
         response = chat.send_message(user_input)
         raw_text = response.text.strip()
@@ -165,12 +174,14 @@ async def process_text_command(user_input):
         #same as for voice commands but here we return the response instead of speaking it
         try:
             response_json = json.loads(cleaned_text)
-            await handle_tool_response(response_json)
+            await handle_tool_response(response_json, for_browser=for_browser)
+            audio_path = await handle_tool_response(response_json, for_browser=for_browser)
             return {"status": "success", 
-                    "response": response_json
+                    "response": response_json,
+                    "mp3": f"/static/audio/response.mp3" if audio_path else None
                     }
         except json.JSONDecodeError:
-            await speak("I'm not sure I understand that command.")
+            await speak("I'm not sure I understand that command.",for_browser=for_browser)
             return {"status": "error", 
                     "error": "Invalid JSON from model"
                     }
