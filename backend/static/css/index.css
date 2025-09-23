@@ -12,3 +12,34 @@ body{
     display:hidden;
     visibility:hidden;
 }
+#mic{
+    background-color: transparent;
+    border: none;
+    cursor: pointer;
+
+}
+
+#mic_img{
+    width: 50px;
+    height: 50px;
+    margin-left: -500px;
+    border-radius: 50px;
+}
+
+#send_img{
+    width: 50px;
+    height: 50px;
+    margin-left: -400px;
+    border-radius: 50px;
+}
+
+#mic_img:hover{
+    transform: scale(1.2);
+    transition: all 0.3s ease;
+}
+
+#send_img:hover{
+    transform: scale(1.2);
+    transition: all 0.3s ease;
+}
+

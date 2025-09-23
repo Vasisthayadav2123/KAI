@@ -17,7 +17,7 @@ OUTPUT_FILE = "static\\audio\\response.mp3"
 WAKE_WORD = "kai"
 load_dotenv()
 
-# GOOGLE GEMINI SETUP 
+# gemini setup 
 try:
     api_key = os.getenv("GOOGLE_API_KEY")
     genai.configure(api_key=api_key)
@@ -57,7 +57,7 @@ chat.send_message(SYSTEM_PROMPT)
 
 
 
-# TEXT TO SPEECH FUNCTION
+#text to speech function
 async def speak(text, for_browser=False):
     if text:
         print(f"\nKAI: {text}")
@@ -90,7 +90,7 @@ def listen_for_command():
 
 
 
-# CLEAN JSON RESPONSE FUNCTION
+# cleaning json response from model
 def clean_json_response(text):
     text = re.sub(r'```json\s*', '', text)
     text = re.sub(r'```\s*$', '', text)
@@ -100,7 +100,7 @@ def clean_json_response(text):
 
 
 
-# HANDLE TOOL RESPONSE FUNCTION
+# handling tool resposne and usage
 async def handle_tool_response(response_json , for_browser=False):
     tool = response_json.get("tool")
     audio_path = None
@@ -163,7 +163,7 @@ async def handle_tool_response(response_json , for_browser=False):
 
 
 
-# PROCESS TEXT COMMAND FUNCTION
+# handling text commands from browser
 async def process_text_command(user_input,for_browser=False):
     try:
         response = chat.send_message(user_input)

@@ -30,6 +30,8 @@ def run_kai_script():
 def hello_world():
     return render_template('index.html')
 
+
+## handling text input from broser
 @app.route('/process',methods=['POST'])
 def process_command():
     data = request.get_json()
@@ -41,6 +43,8 @@ def process_command():
     return jsonify(result)
 
 
+
+## removing audio file after playing it in browser
 @app.route('/delete_audio', methods=['POST'])
 def delete_audio():
     try:
@@ -52,9 +56,12 @@ def delete_audio():
         return f"An error occurred: {str(e)}"
 
 
-@app.route('/user/<names>')
-def greet_user(names):
-    return f'Hello, {names}!'
+## receiving audio data from browser and converting it to text
+@app.route('/send_audio', methods=['POST'])
+def audio_convert():
+    blob = request.files['audio_data']
+    command = recognizer.recognize_google(blob)
+    return jsonify({"status":"success", "message":"Audio received successfully."})
 
 @app.route('/run_kai')
 def run_kai():

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>My Flask App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
 </head>
 <body>
     <h1>Welcome to My Website!</h1>
@@ -13,13 +14,16 @@
         <div id="commandSection">    
             <input type="text" id="commandInput" name="command">
             <button type="button" onclick="handleSubmit()">Submit</button>
-            <script src="{{ url_for('static', filename='javascript/index.js') }}"></script>
         </div>
-        <p id="response">gay porn</p>
+        <p id="response">place holder</p>
         <audio controls autoplay id="audio">
             <source src="" type="audio/mp3">
         </audio>
+        
+        <button type="button" onclick="start_Audio_Record()" id="mic"><img src="{{ url_for('static',filename='images/mic.jpg')}}" id="mic_img" alt="mic input"></button>
+        <button type="button" onclick="stop_Audio_Record()" id="mic"><img src="{{ url_for('static',filename='images/send.jpg')}}" id="send_img" alt="mic input"></button>
     </form>
-
+    
+    <script src="{{ url_for('static', filename='javascript/index.js') }}"></script>
 </body>
 </html>
