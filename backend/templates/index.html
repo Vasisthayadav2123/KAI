@@ -2,28 +2,38 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Flask App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
     <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
 </head>
 <body>
-    <h1>Welcome to My Website!</h1>
-    <p>This page is being served by a Flask template.</p>
-    <form id="commandForm" action="">
-        <label for="commandInput">Enter the command:</label>
-        <div id="commandSection">    
-            <input type="text" id="commandInput" name="command">
+    <h1>Welcome to My Flask App!</h1>
+    <p>This page is powered by Flask and HTML.</p>
+
+    <form id="commandForm">
+        <label for="commandInput" style="font-size: 1.1rem; margin-bottom: 10px; display: block;">Enter the command:</label>
+        <div id="commandSection">
+            <input type="text" id="commandInput" name="command" placeholder="Type a command...">
             <button type="button" onclick="handleSubmit()">Submit</button>
         </div>
-        <p id="response">place holder</p>
+        
+        <p id="response">Your response will appear here.</p>
+        
         <audio controls autoplay id="audio">
             <source src="" type="audio/mp3">
         </audio>
-        
-        <button type="button" onclick="start_Audio_Record()" id="mic"><img src="{{ url_for('static',filename='images/mic.jpg')}}" id="mic_img" alt="mic input"></button>
-        <button type="button" onclick="stop_Audio_Record()" id="mic"><img src="{{ url_for('static',filename='images/send.jpg')}}" id="send_img" alt="mic input"></button>
+
+        <div style="display: flex; justify-content: center; gap: 20px;">
+            <button type="button" onclick="start_Audio_Record()" id="mic">
+                <img src="{{ url_for('static',filename='images/mic.jpg')}}" id="mic_img" alt="mic input">
+            </button>
+            <button type="button" onclick="stop_Audio_Record()" id="send_img">
+                <img src="{{ url_for('static',filename='images/send.jpg')}}" alt="send input">
+            </button>
+        </div>
     </form>
-    
+
     <script src="{{ url_for('static', filename='javascript/index.js') }}"></script>
 </body>
 </html>
