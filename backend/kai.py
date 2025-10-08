@@ -51,7 +51,7 @@ You have access to the following tools. You must format your response as a JSON 
 
 
 # Initialize chat with system prompt
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.5-flash')
 chat = model.start_chat(history=[])
 chat.send_message(SYSTEM_PROMPT)
 
@@ -174,7 +174,6 @@ async def process_text_command(user_input,for_browser=False):
         #same as for voice commands but here we return the response instead of speaking it
         try:
             response_json = json.loads(cleaned_text)
-            await handle_tool_response(response_json, for_browser=for_browser)
             audio_path = await handle_tool_response(response_json, for_browser=for_browser)
             return {"status": "success", 
                     "response": response_json,

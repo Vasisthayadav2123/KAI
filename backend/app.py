@@ -60,7 +60,7 @@ def delete_audio():
 @app.route('/send_audio', methods=['POST'])
 def audio_convert():
     blob = request.files['audio_data']
-    command = recognizer.recognize_google(blob)
+    ## command = recognizer.recognize_google(blob)
     return jsonify({"status":"success", "message":"Audio received successfully."})
 
 @app.route('/run_kai')
