@@ -123,6 +123,7 @@ async def handle_tool_response(response_json , for_browser=False):
                 "vscode": "code",
                 "visual studio code" : "code",
                 "helldivers 2" : "c:\\Program Files (x86)\\Steam\\steamapps\\common\\Helldivers 2\\bin\\helldivers2.exe",
+                "War Robots" : "C:\\Program Files\\BlueStacks_nxt\\HD-Player.exe",
             }
 
             app_key = app_name.lower()
