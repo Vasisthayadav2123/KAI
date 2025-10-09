@@ -4,7 +4,7 @@ import sys
 import asyncio
 import os
 import json
-from kai import process_text_command
+from kai import process_text_command, transcribe_audio
 import threading
 
 # Create an instance of the Flask class
@@ -44,6 +44,8 @@ def process_command():
 
 
 
+
+
 ## removing audio file after playing it in browser
 @app.route('/delete_audio', methods=['POST'])
 def delete_audio():
@@ -60,7 +62,11 @@ def delete_audio():
 @app.route('/send_audio', methods=['POST'])
 def audio_convert():
     blob = request.files['audio_data']
-    ## command = recognizer.recognize_google(blob)
+    target_dir = 'static/audio/userinputs'
+    os.makedirs(target_dir, exist_ok=True)  # Create the folder if it doesn't exist
+    file_path = os.path.join(target_dir, 'user_command_audio.webm')
+    blob.save(file_path)
+    transcribe_audio('static/audio/userinputs/user_command_audio.webm')
     return jsonify({"status":"success", "message":"Audio received successfully."})
 
 @app.route('/run_kai')

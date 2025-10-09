@@ -72,7 +72,17 @@ async def speak(text, for_browser=False):
             os.remove(OUTPUT_FILE)
         
         
-
+def transcribe_audio(file_path):
+    with sr.AudioFile(file_path) as source:
+        audio = recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.record(source)
+    try:
+        command = recognizer.recognize_google(audio)
+        print(f"Transcription: {command}")
+        return command.lower()
+    except (sr.UnknownValueError, sr.RequestError) as e:
+        print(f"Error transcribing audio: {e}")
+        return None
 
 
 #  LISTENING for command and tool
@@ -86,6 +96,7 @@ def listen_for_command():
             print(f"You said: {command}")
             return command.lower()
         except (sr.UnknownValueError, sr.RequestError):
+            print(f"and error occured: {e}" )
             return None
 
 

@@ -55,7 +55,7 @@ async function start_Audio_Record() {
         //after recording stop
         // convert the audio data to blob
         mediaRecorder.onstop = function(e){
-            const blob = new Blob(chunks, {'type':'audio/mp3'});
+            const blob = new Blob(chunks, {'type':'audio/webm'});
             const audioURL = window.URL.createObjectURL(blob);
 
             //send the blob to the server
@@ -80,7 +80,7 @@ function stop_Audio_Record() {
 
 function sendAudio(blob) {
     const formData = new FormData();
-    formData.append('audio_data', blob, 'input.mp3');
+    formData.append('audio_data', blob, 'input.webm');
     fetch('/send_audio',{
         method: 'POST',
         body: formData
