@@ -71,15 +71,16 @@ async def speak(text, for_browser=False):
             playsound(OUTPUT_FILE)
             os.remove(OUTPUT_FILE)
         
-        
-def transcribe_audio(file_path):
+# audio to text function       
+async def transcribe_audio(file_path):
     with sr.AudioFile(file_path) as source:
         audio = recognizer.adjust_for_ambient_noise(source)
         audio = recognizer.record(source)
     try:
         command = recognizer.recognize_google(audio)
         print(f"Transcription: {command}")
-        return command.lower()
+        com = command.lower()
+        return await process_text_command(com , for_browser=True)
     except (sr.UnknownValueError, sr.RequestError) as e:
         print(f"Error transcribing audio: {e}")
         return None

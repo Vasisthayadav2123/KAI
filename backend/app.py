@@ -6,6 +6,7 @@ import os
 import json
 from kai import process_text_command, transcribe_audio
 import threading
+import ffmpeg;
 
 # Create an instance of the Flask class
 app = Flask(__name__)
@@ -51,6 +52,7 @@ def process_command():
 def delete_audio():
     try:
         os.remove("static\\audio\\response.mp3")
+        os.remove("static\\audio\\userinputs\\user_command_audio.wav")
         return "Audio file deleted successfully."
     except FileNotFoundError:
         return "Audio file not found."
@@ -66,8 +68,29 @@ def audio_convert():
     os.makedirs(target_dir, exist_ok=True)  # Create the folder if it doesn't exist
     file_path = os.path.join(target_dir, 'user_command_audio.webm')
     blob.save(file_path)
-    transcribe_audio('static/audio/userinputs/user_command_audio.webm')
-    return jsonify({"status":"success", "message":"Audio received successfully."})
+    audio_convert_mp3(file_path)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(transcribe_audio('static/audio/userinputs/user_command_audio.wav'))
+    return jsonify(result)
+
+
+## @app.route('/convert_audio', methods=['POST'])
+def audio_convert_mp3(input_path):
+    input_path = 'static/audio/userinputs/user_command_audio.webm'
+    output_path = 'static/audio/userinputs/user_command_audio.wav'
+    
+    try:
+        (
+            ffmpeg
+            .input(input_path)
+            .output(output_path, format='wav', acodec='pcm_s16le', ac=1, ar='16000')
+            .run(overwrite_output=True)
+        )
+        os.remove(input_path)  # Remove the original webm file after conversion
+        return jsonify({"status":"success", "message":"Audio converted to mp3 successfully."})
+    except ffmpeg.Error as e:
+        return jsonify({"status":"error", "message":f"Error converting audio: {e.stderr.decode()}"})
 
 @app.route('/run_kai')
 def run_kai():

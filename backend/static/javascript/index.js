@@ -23,6 +23,10 @@ function handleSubmit() {
             audioEmlement.onended = function() {
                 fetch('/delete_audio', {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ path })
                 });
                 audioEmlement.src = "";
             };
@@ -88,6 +92,19 @@ function sendAudio(blob) {
     .then(response => response.json())
     .then(data => {
         console.log('Success:', data);
+        const audioElement = document.getElementById('audio');
+        document.getElementById('response').innerText = data.response.say;
+        if (data.mp3) {
+            audioElement.src = data.mp3 + '?t=' + new Date().getTime(); // Cache-busting
+            audioElement.onended = function() {
+                fetch('/delete_audio', {
+                    method: 'POST',
+                });
+                audioElement.src = "";
+            };
+            audioElement.load();
+            audioElement.play();
+        }
     })
     .catch((error) => {
         console.error('Error:', error);
