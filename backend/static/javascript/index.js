@@ -45,9 +45,12 @@ let chunks = [];
 const constraints = { audio:true}
 
 
-
+const mic = document.getElementById("mic");
 
 async function start_Audio_Record() {
+    mic.style.transform = "scale(1.2)";
+    mic.style.backgroundColor = "#ff4b5c";
+    mic.style.borderRadius = "80%";
     navigator.mediaDevices.getUserMedia(constraints)
     .then(function(stream) {
         // new media recorder instance
@@ -77,6 +80,8 @@ async function start_Audio_Record() {
 }
 
 function stop_Audio_Record() {
+    mic.style.backgroundColor = "";
+    mic.style.transform = "scale(1)";
     mediaRecorder.stop();
     console.log(mediaRecorder.state);
     console.log("recorder stopped");

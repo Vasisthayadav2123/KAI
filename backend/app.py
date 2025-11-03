@@ -20,7 +20,6 @@ def run_kai_script():
         
     except subprocess.CalledProcessError as e:
         return f'Error executing KAI script: {e.stderr}'
-    
 
 
 
@@ -73,6 +72,7 @@ def audio_convert():
     asyncio.set_event_loop(loop)
     result = loop.run_until_complete(transcribe_audio('static/audio/userinputs/user_command_audio.wav'))
     return jsonify(result)
+
 
 
 ## @app.route('/convert_audio', methods=['POST'])
