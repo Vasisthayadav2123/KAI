@@ -1,18 +1,28 @@
+import time
 from flask import Flask ,render_template, request, jsonify
 import subprocess
 import sys
 import asyncio
 import os
 import json
+import numpy as np
 from kai import process_text_command, transcribe_audio
 import threading
-import ffmpeg;
+import ffmpeg
+import cv2
+import mss
+
+
+
+
 
 # Create an instance of the Flask class
 app = Flask(__name__)
 
 
+#FUNTIONS
 
+#Running Kai script
 def run_kai_script():
     try:
         result = subprocess.Popen([sys.executable, 'kai.py'],)
@@ -21,6 +31,18 @@ def run_kai_script():
     except subprocess.CalledProcessError as e:
         return f'Error executing KAI script: {e.stderr}'
 
+#screenCapture function
+def generate_frames():
+    with mss.mss() as sct:
+        monitor = sct.monitors[1]  # Capture the primary monitor
+        while True:
+            img = sct.grab(monitor)
+            frame = cv2.cvtColor(np.array(img), cv2.COLOR_BGRA2BGR)
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            time.sleep(0.01) #~20 FPS 
 
 
 
@@ -97,6 +119,11 @@ def run_kai():
     #running script execution in a separate thread
     threading.Thread(target=run_kai_script).start()
     return 'KAI script is runnning in the background.'
+
+
+@app.route('/video_feed')
+def video_feed():
+    return app.response_class(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
     
 @app.route('/sleep')
 def sleep():
