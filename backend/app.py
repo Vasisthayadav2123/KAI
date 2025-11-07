@@ -1,4 +1,6 @@
 import time
+from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCConfiguration, RTCIceServer
+from av import VideoFrame
 from flask import Flask ,render_template, request, jsonify
 import subprocess
 import sys
@@ -45,12 +47,77 @@ def generate_frames():
             time.sleep(0.01) #~20 FPS 
 
 
+class ScreenTrack(VideoStreamTrack):
+    """A video track that continuously captures your screen."""
+    def __init__(self):
+        super().__init__()
+        self.sct = mss.mss()
+        self.monitor = self.sct.monitors[1]
+
+    async def recv(self):
+        img = np.array(self.sct.grab(self.monitor))
+        frame = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        video_frame = VideoFrame.from_ndarray(frame, format="bgr24")
+        video_frame.pts, video_frame.time_base = self.next_timestamp()
+        await asyncio.sleep(1 / 30)  # ~30 FPS
+        return video_frame
+
+
+
+## @app.route('/convert_audio', methods=['POST'])
+def audio_convert_mp3(input_path):
+    input_path = 'static/audio/userinputs/user_command_audio.webm'
+    output_path = 'static/audio/userinputs/user_command_audio.wav'
+    
+    try:
+        (
+            ffmpeg
+            .input(input_path)
+            .output(output_path, format='wav', acodec='pcm_s16le', ac=1, ar='16000')
+            .run(overwrite_output=True)
+        )
+        os.remove(input_path)  # Remove the original webm file after conversion
+        return jsonify({"status":"success", "message":"Audio converted to mp3 successfully."})
+    except ffmpeg.Error as e:
+        return jsonify({"status":"error", "message":f"Error converting audio: {e.stderr.decode()}"})
+
+
 
 
 # Define a route and a view function
 @app.route('/')
 def hello_world():
     return render_template('index.html')
+
+@app.route('/stream')
+def stream():
+    return render_template('stream.html')
+
+@app.route("/offer", methods=["POST"])
+async def offer():
+    params = request.get_json()
+    offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
+
+    pc = RTCPeerConnection(RTCConfiguration(
+        iceServers=[RTCIceServer(urls="stun:stun.l.google.com:19302")]
+    ))
+
+    pc.addTrack(ScreenTrack())
+
+    @pc.on("connectionstatechange")
+    async def on_connectionstatechange():
+        print("Connection state:", pc.connectionState)
+        if pc.connectionState == "failed":
+            await pc.close()
+
+    await pc.setRemoteDescription(offer)
+    answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+
+    return jsonify({
+        "sdp": pc.localDescription.sdp,
+        "type": pc.localDescription.type
+    })
 
 
 ## handling text input from broser
@@ -97,22 +164,6 @@ def audio_convert():
 
 
 
-## @app.route('/convert_audio', methods=['POST'])
-def audio_convert_mp3(input_path):
-    input_path = 'static/audio/userinputs/user_command_audio.webm'
-    output_path = 'static/audio/userinputs/user_command_audio.wav'
-    
-    try:
-        (
-            ffmpeg
-            .input(input_path)
-            .output(output_path, format='wav', acodec='pcm_s16le', ac=1, ar='16000')
-            .run(overwrite_output=True)
-        )
-        os.remove(input_path)  # Remove the original webm file after conversion
-        return jsonify({"status":"success", "message":"Audio converted to mp3 successfully."})
-    except ffmpeg.Error as e:
-        return jsonify({"status":"error", "message":f"Error converting audio: {e.stderr.decode()}"})
 
 @app.route('/run_kai')
 def run_kai():
@@ -124,6 +175,7 @@ def run_kai():
 @app.route('/video_feed')
 def video_feed():
     return app.response_class(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    
     
 @app.route('/sleep')
 def sleep():
