@@ -1,13 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Live Screen Stream</title>
+  <meta charset="UTF-8">
+  <title>Live Screen Stream (WebRTC)</title>
 </head>
-<body style="background-color: #121212; color: #eee; text-align:center;">
-    <h2>📺 Live Screen Stream</h2>
-    <video id="video" autoplay playsinline style="width:90%; max-width:1000px; border:2px solid #555;"></video>
-    
-    <script src="{{ url_for('static', filename='javascript/stream.js') }}"></script>
+<body>
+    <link href="{{ url_for('static', filename='css/stream.css') }}"> </link>
+  <h2>📺 Live Screen Stream</h2>
+
+  <div id="controls">
+    <h1>🎵 Remote Media Control</h1>
+    <button onclick="sendAction('previous')">⏮️ Prev</button>
+    <button onclick="sendAction('playpause')">⏯️ Play/Pause</button>
+    <button onclick="sendAction('next')">⏭️ Next</button>
+    <button onclick="sendAction('volumedown')">🔉 Volume -</button>
+    <button onclick="sendAction('volumeup')">🔊 Volume +</button>
+  </div>
+
+  <video id="video" autoplay playsinline ></video>
+
+  <script src="{{ url_for('static', filename='javascript/stream.js') }}"></script>
 </body>
 </html>

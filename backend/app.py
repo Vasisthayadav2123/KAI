@@ -8,6 +8,7 @@ import asyncio
 import os
 import json
 import numpy as np
+import pyautogui
 from kai import process_text_command, transcribe_audio
 import threading
 import ffmpeg
@@ -81,6 +82,24 @@ def audio_convert_mp3(input_path):
     except ffmpeg.Error as e:
         return jsonify({"status":"error", "message":f"Error converting audio: {e.stderr.decode()}"})
 
+@app.route('/control', methods=['POST'])
+def control():
+    action = request.json.get('action')
+    
+    if action == 'playpause':
+        pyautogui.press('playpause')
+    elif action == 'next':
+        pyautogui.press('nexttrack')
+    elif action == 'previous':
+        pyautogui.press('prevtrack')
+    elif action == 'volumeup':
+        pyautogui.press('volumeup')
+    elif action == 'volumedown':
+        pyautogui.press('volumedown')
+    else:
+        return jsonify({'status': 'error', 'message': 'Unknown action'}), 400
+    
+    return jsonify({'status': 'ok', 'action': action})
 
 
 
@@ -102,7 +121,8 @@ async def offer():
         iceServers=[RTCIceServer(urls="stun:stun.l.google.com:19302")]
     ))
 
-    pc.addTrack(ScreenTrack())
+    # create a transceiver that is explicitly sendonly (server -> client video)
+    transceiver = pc.addTransceiver(kind="video", direction="sendonly")
 
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
@@ -110,7 +130,14 @@ async def offer():
         if pc.connectionState == "failed":
             await pc.close()
 
+    # set remote description from client offer
     await pc.setRemoteDescription(offer)
+
+    # attach the screen track to the transceiver's sender
+    # replace_track is synchronous in aiortc; pass an instance of your track
+    transceiver.sender.replace_track(ScreenTrack())
+
+    # create and set local answer
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 
