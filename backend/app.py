@@ -48,15 +48,20 @@ def generate_frames():
             time.sleep(0.01) #~20 FPS 
 
 
+pcs = set()  # keep peer connections alive
+
 class ScreenTrack(VideoStreamTrack):
-    """A video track that continuously captures your screen."""
-    def __init__(self):
+    """A video track that captures the screen on each recv (create mss in same thread)."""
+    def __init__(self, monitor_index=1):
         super().__init__()
-        self.sct = mss.mss()
-        self.monitor = self.sct.monitors[1]
+        self.monitor_index = monitor_index
 
     async def recv(self):
-        img = np.array(self.sct.grab(self.monitor))
+        # create mss inside the thread where recv runs to avoid thread-local errors
+        with mss.mss() as sct:
+            monitors = sct.monitors
+            monitor = monitors[self.monitor_index] if len(monitors) > self.monitor_index else monitors[0]
+            img = np.array(sct.grab(monitor))
         frame = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
         video_frame = VideoFrame.from_ndarray(frame, format="bgr24")
         video_frame.pts, video_frame.time_base = self.next_timestamp()
@@ -120,24 +125,32 @@ async def offer():
     pc = RTCPeerConnection(RTCConfiguration(
         iceServers=[RTCIceServer(urls="stun:stun.l.google.com:19302")]
     ))
-
-    # create a transceiver that is explicitly sendonly (server -> client video)
-    transceiver = pc.addTransceiver(kind="video", direction="sendonly")
+    pcs.add(pc)
 
     @pc.on("connectionstatechange")
     async def on_connectionstatechange():
         print("Connection state:", pc.connectionState)
-        if pc.connectionState == "failed":
+        if pc.connectionState in ("failed", "closed"):
             await pc.close()
+            pcs.discard(pc)
 
-    # set remote description from client offer
+    @pc.on("iceconnectionstatechange")
+    async def on_ice():
+        print("ICE state:", pc.iceConnectionState)
+        if pc.iceConnectionState in ("failed", "disconnected", "closed"):
+            await pc.close()
+            pcs.discard(pc)
+
+    # IMPORTANT: create the server-side transceiver first so it can be matched to
+    # the client's offer m-line and have a valid offer-direction.
+    transceiver = pc.addTransceiver("video", direction="sendonly")
+
+    # now set the client's offer as the remote description
     await pc.setRemoteDescription(offer)
 
-    # attach the screen track to the transceiver's sender
-    # replace_track is synchronous in aiortc; pass an instance of your track
-    transceiver.sender.replace_track(ScreenTrack())
+    # attach the screen track to the transceiver sender
+    transceiver.sender.replaceTrack(ScreenTrack())
 
-    # create and set local answer
     answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
 

@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <title>Live Screen Stream (WebRTC)</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/stream.css') }}">
 </head>
 <body>
-    <link href="{{ url_for('static', filename='css/stream.css') }}"> </link>
-  <h2>📺 Live Screen Stream</h2>
+    <h2>📺 Live Screen Stream</h2>
 
   <div id="controls">
     <h1>🎵 Remote Media Control</h1>
@@ -17,7 +17,7 @@
     <button onclick="sendAction('volumeup')">🔊 Volume +</button>
   </div>
 
-  <video id="video" autoplay playsinline ></video>
+  <video id="video" autoplay playsinline muted></video>
 
   <script src="{{ url_for('static', filename='javascript/stream.js') }}"></script>
 </body>

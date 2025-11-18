@@ -3,15 +3,20 @@ async function startStream() {
   const pc = new RTCPeerConnection();
 
   pc.ontrack = event => {
-    console.log("🎥 Received remote track");
+    console.log("🎥 Received remote track", event);
     videoElement.srcObject = event.streams[0];
+    videoElement.play().catch(e => console.warn("video.play() failed:", e));
   };
 
-  // Create an SDP offer
+  pc.oniceconnectionstatechange = () => {
+    console.log("Client ICE state:", pc.iceConnectionState);
+  };
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // Send the offer to Flask backend
   const response = await fetch("/offer", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
