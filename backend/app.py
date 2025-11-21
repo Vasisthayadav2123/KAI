@@ -34,7 +34,7 @@ def run_kai_script():
     except subprocess.CalledProcessError as e:
         return f'Error executing KAI script: {e.stderr}'
 
-#screenCapture function
+""" #screenCapture function
 def generate_frames():
     with mss.mss() as sct:
         monitor = sct.monitors[1]  # Capture the primary monitor
@@ -51,7 +51,7 @@ def generate_frames():
 pcs = set()  # keep peer connections alive
 
 class ScreenTrack(VideoStreamTrack):
-    """A video track that captures the screen on each recv (create mss in same thread)."""
+    
     def __init__(self, monitor_index=1):
         super().__init__()
         self.monitor_index = monitor_index
@@ -67,7 +67,7 @@ class ScreenTrack(VideoStreamTrack):
         video_frame.pts, video_frame.time_base = self.next_timestamp()
         await asyncio.sleep(1 / 30)  # ~30 FPS
         return video_frame
-
+ """
 
 
 ## @app.route('/convert_audio', methods=['POST'])
