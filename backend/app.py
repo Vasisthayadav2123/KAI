@@ -117,7 +117,7 @@ def hello_world():
 def stream():
     return render_template('stream.html')
 
-@app.route("/offer", methods=["POST"])
+""" @app.route("/offer", methods=["POST"])
 async def offer():
     params = request.get_json()
     offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
@@ -157,7 +157,7 @@ async def offer():
     return jsonify({
         "sdp": pc.localDescription.sdp,
         "type": pc.localDescription.type
-    })
+    }) """
 
 
 ## handling text input from broser
