@@ -212,9 +212,9 @@ def run_kai():
     return 'KAI script is runnning in the background.'
 
 
-@app.route('/video_feed')
+""" @app.route('/video_feed')
 def video_feed():
-    return app.response_class(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return app.response_class(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame') """
     
     
 @app.route('/sleep')

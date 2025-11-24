@@ -8,7 +8,6 @@ async function startViewer() {
         ]
     });
 
-    pc.onicecandidate = (e) => console.log("CLIENT ICE candidate:", e.candidate);
     pc.oniceconnectionstatechange = () => console.log("CLIENT ICE state:", pc.iceConnectionState);
     pc.onconnectionstatechange = () => console.log("CLIENT connection state:", pc.connectionState);
 
@@ -22,6 +21,7 @@ async function startViewer() {
 
     // REQUEST to RECEIVE video from server — must be added before createOffer
     pc.addTransceiver("video", { direction: "recvonly" });
+    pc.addTransceiver("audio", { direction: "recvonly" });
 
     // Create offer
     const offer = await pc.createOffer();
@@ -30,7 +30,7 @@ async function startViewer() {
     // Send offer to WebRTC server
     let resp;
     try {
-        resp = await fetch("http://127.0.0.1:8080/offer", {
+        resp = await fetch("http://192.168.1.38:8080/offer", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

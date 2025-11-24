@@ -3,7 +3,7 @@ import time
 import numpy as np
 import cv2
 import mss as mss
-from av import VideoFrame
+from av import AudioFrame, VideoFrame
 from aiohttp import web
 import aiohttp_cors
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack , AudioStreamTrack
@@ -80,6 +80,40 @@ class systemAudioTrack(AudioStreamTrack):
             "pipe:1"
         ]
 
+        self.process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=0
+        )
+
+        self.samples_per_frame = 960  # 20ms @ 48kHz
+        self.channels = 2
+    
+    async def recv(self):
+        num_bytes = self.samples_per_frame * self.channels * 2 
+
+        loop = asyncio.get_event_loop()
+        pcm = await loop.run_in_executor(none, self.process.stdout.read, num_bytes)
+
+        if not pcm:
+            await asyncio.sleep(0.01)
+            return await self.recv()
+        
+        audio_data = np.frombuffer(pcm, dtype=np.int16)
+        audio_data = audio_data.reshape(self.channels, -1)
+
+        frame = AudioFrame.from_ndarray(audio_data, format="s16", layout="stereo")
+        frame.sample_rate = 48000
+        frame.pts,frame.time_base = await self.next_timestamp()
+
+        return frame
+    
+    def stop(self):
+        if self.process:
+            self.process.kill()
+        super().stop()
+
 
 
 
@@ -104,6 +138,10 @@ async def offer(request):
     screen_track = GPUScreenTrack(target_fps=60)
     pc.addTrack(screen_track)
 
+    # each viewer gets its own system audio track
+    audio_track = systemAudioTrack()
+    pc.addTrack(audio_track)
+
     @pc.on("connectionstatechange")
     async def on_disconnect():
         global viewer_count
@@ -111,6 +149,7 @@ async def offer(request):
             viewer_count -= 1
             print("Viewer disconnected:", viewer_count)
             screen_track.stop()
+            audio_track.stop()
             await pc.close()
             pcs.discard(pc)
 
