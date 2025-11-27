@@ -1,5 +1,5 @@
+const videoElement = document.getElementById("video");
 async function startViewer() {
-    const videoElement = document.getElementById("video");
 
     // WebRTC peer connection
     const pc = new RTCPeerConnection({
@@ -16,10 +16,11 @@ async function startViewer() {
         if (videoElement.srcObject !== event.streams[0]) {
             videoElement.srcObject = event.streams[0];
             videoElement.play().catch(e => console.warn("video.play() failed:", e));
+            startFPSCounter(videoElement);
         }
     };
 
-    // REQUEST to RECEIVE video from server — must be added before createOffer
+    // REQUEST to RECEIVE video/audio from server 
     pc.addTransceiver("video", { direction: "recvonly" });
     pc.addTransceiver("audio", { direction: "recvonly" });
 
@@ -66,4 +67,23 @@ async function sendAction(action) {
 
 // Auto-start
 startViewer();
+
+function startFPSCounter(){
+    let lastFrame = performance.now();
+    let frames = 0;
+
+    function updateFPS(now){
+        frames++;
+        const delta = now - lastFrame;
+        if(delta >= 1000){
+            const fps =(frames/delta)*1000;
+            document.getElementById("fps").textContent = `FPS: ${fps.toFixed(1)}`;
+
+            lastTime= now;
+            frames =0;
+        }
+        videoElement.requestVideoFrameCallback(updateFPS);
+    }
+    videoElement.requestVideoFrameCallback(updateFPS);
+}
 

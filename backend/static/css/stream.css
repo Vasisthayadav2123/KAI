@@ -32,3 +32,15 @@
     align-items: center;
     margin: 10px;
 }
+
+#fps {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: #00FF00;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    z-index: 1000;
+}

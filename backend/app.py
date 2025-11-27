@@ -1,7 +1,8 @@
 import time
+from werkzeug.security import generate_password_hash, check_password_hash
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCConfiguration, RTCIceServer
 from av import VideoFrame
-from flask import Flask ,render_template, request, jsonify
+from flask import Flask, redirect ,render_template, request, jsonify, session
 import subprocess
 import sys
 import asyncio
@@ -21,6 +22,19 @@ import mss
 
 # Create an instance of the Flask class
 app = Flask(__name__)
+app.secret_key = '4f8e3c7a9d2b4e8f98cbb1160d912af4912fb32b690efce5accf41bec0f23a80'
+
+
+USERS = {
+    "mobile_user": generate_password_hash("mobilepass"),
+    "laptop_user": generate_password_hash("laptoppass")
+}
+
+active_logins = {
+    "mobile_user": False,
+    "laptop_user": False
+}
+
 
 
 #FUNTIONS
@@ -82,7 +96,7 @@ def audio_convert_mp3(input_path):
             .output(output_path, format='wav', acodec='pcm_s16le', ac=1, ar='16000')
             .run(overwrite_output=True)
         )
-        os.remove(input_path)  # Remove the original webm file after conversion
+        os.remove(input_path)  # Remove the original
         return jsonify({"status":"success", "message":"Audio converted to mp3 successfully."})
     except ffmpeg.Error as e:
         return jsonify({"status":"error", "message":f"Error converting audio: {e.stderr.decode()}"})
@@ -110,8 +124,34 @@ def control():
 
 # Define a route and a view function
 @app.route('/')
-def hello_world():
+def index():
+    if "username" in session:
+        return redirect('/index')
+    return redirect('/login')
+
+@app.route('/index')
+def home():
     return render_template('index.html')
+
+@app.route('/login', methods=['GET','POST'])
+def login():
+    if request.method == 'GET':
+        return render_template('login.html')
+    username = request.form['username']
+    password = request.form['password']
+    if username in USERS and check_password_hash(USERS[username], password):
+        if active_logins[username]:
+            return "User already logged in from another device.", 403
+        
+        ua = request.user_agent.string.lower()
+        if username == "mobile_user" and "mobile" not in ua:
+            return "This account can only be accessed from a mobile device.", 403
+        if username == "laptop_user" and "mobile" in ua:
+            return "This account can only be accessed from a laptop/desktop device.", 403
+        
+        active_logins[username] = True
+        session['username'] = username
+        return redirect('/index')
 
 @app.route('/stream')
 def stream():
@@ -212,11 +252,7 @@ def run_kai():
     return 'KAI script is runnning in the background.'
 
 
-""" @app.route('/video_feed')
-def video_feed():
-    return app.response_class(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame') """
-    
-    
+
 @app.route('/sleep')
 def sleep():
     try:
