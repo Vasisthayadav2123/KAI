@@ -28,7 +28,7 @@ class GPUScreenTrack(VideoStreamTrack):
         self.first_frame = frame
 
     async def recv(self):
-        if not self.running:
+        if not self.running: 
             await asyncio.sleep(0.05)
             return await self.recv()
         

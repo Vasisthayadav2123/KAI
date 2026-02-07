@@ -1,4 +1,5 @@
 import time
+import psutil
 from werkzeug.security import generate_password_hash, check_password_hash
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCConfiguration, RTCIceServer
 from av import VideoFrame
@@ -83,6 +84,14 @@ class ScreenTrack(VideoStreamTrack):
         return video_frame
  """
 
+@app.route('/health')
+def health():
+    stats = {
+        "cpu_usage_percent": psutil.cpu_percent(),
+        "memory_usage_percent": psutil.virtual_memory().percent,
+        "disk_usage_percent": psutil.disk_usage('/').percent
+    }
+    return jsonify(stats)
 
 ## @app.route('/convert_audio', methods=['POST'])
 def audio_convert_mp3(input_path):
