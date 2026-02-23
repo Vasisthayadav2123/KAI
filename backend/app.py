@@ -1,7 +1,5 @@
-import time
 import psutil
 from werkzeug.security import generate_password_hash, check_password_hash
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, RTCConfiguration, RTCIceServer
 from av import VideoFrame
 from flask import Flask, redirect ,render_template, request, jsonify, session
 import subprocess
@@ -14,8 +12,6 @@ import pyautogui
 from kai import process_text_command, transcribe_audio
 import threading
 import ffmpeg
-import cv2
-import mss
 
 
 
@@ -86,12 +82,46 @@ class ScreenTrack(VideoStreamTrack):
 
 @app.route('/health')
 def health():
+    gpu = get_gpu_stats()
     stats = {
-        "cpu_usage_percent": psutil.cpu_percent(),
+        "cpu_usage_percent": psutil.cpu_percent(interval=.75),
         "memory_usage_percent": psutil.virtual_memory().percent,
-        "disk_usage_percent": psutil.disk_usage('/').percent
+        "disk_usage_percent": psutil.disk_usage('/').percent,
+        "gpu_usage_percent": gpu.get("gpu_usage_percent", 0),
+        "gpu_memory_usage_percent": gpu.get("gpu_memory_usage_percent", 0),
+        "gpu_temperature_c": gpu.get("gpu_temperature_c", 0),
+        
     }
     return jsonify(stats)
+
+## GPU stats using 
+def get_gpu_stats():
+    try:
+        result = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,utilization.memory,temperature.gpu",
+                "--format=csv,noheader,nounits"
+            ],
+            shell=True  # ensures it works on Windows
+        )
+        output = result.decode("utf-8").strip()
+        gpu_usage, mem_usage, temp = output.split(", ")
+
+        return {
+            "gpu_usage_percent": int(gpu_usage),
+            "gpu_memory_usage_percent": int(mem_usage),
+            "gpu_temperature_c": int(temp)
+        }
+
+    except Exception as e:
+        # fallback in case no NVIDIA GPU or nvidia-smi fails
+        return {
+            "gpu_usage_percent": 0,
+            "gpu_memory_usage_percent": 0,
+            "gpu_temperature_c": 0,
+            "error": str(e)
+        }
 
 ## @app.route('/convert_audio', methods=['POST'])
 def audio_convert_mp3(input_path):

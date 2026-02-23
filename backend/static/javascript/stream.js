@@ -11,7 +11,6 @@ async function startViewer() {
     pc.oniceconnectionstatechange = () => console.log("CLIENT ICE state:", pc.iceConnectionState);
     pc.onconnectionstatechange = () => console.log("CLIENT connection state:", pc.connectionState);
 
-    // When track received (server screen stream)
     pc.ontrack = (event) => {
         if (videoElement.srcObject !== event.streams[0]) {
             videoElement.srcObject = event.streams[0];
