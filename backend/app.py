@@ -80,48 +80,46 @@ class ScreenTrack(VideoStreamTrack):
         return video_frame
  """
 
+kai_lock = threading.Lock()
+
+def get_gpu_stats():
+    try:
+        # Querying NVIDIA GPU for utilization and temp
+        result = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=utilization.gpu,utilization.memory,temperature.gpu", "--format=csv,noheader,nounits"],
+            shell=True, timeout=1
+        )
+        gpu_usage, mem_usage, temp = result.decode("utf-8").strip().split(", ")
+        return {
+            "gpu_usage_percent": int(gpu_usage),
+            "gpu_mem_percent": int(mem_usage),
+            "temp": int(temp)
+        }
+    except:
+        return {"gpu_usage_percent": 0, "gpu_mem_percent": 0, "temp": 0}
+
 @app.route('/health')
 def health():
     gpu = get_gpu_stats()
+    # Mocking some data that requires specific hardware sensors for the UI
     stats = {
-        "cpu_usage_percent": psutil.cpu_percent(interval=.75),
+        "version": "v3.1",
+        "cpu_usage_percent": psutil.cpu_percent(interval=0.1),
         "memory_usage_percent": psutil.virtual_memory().percent,
+        "memory_used_gb": round(psutil.virtual_memory().used / (1024**3), 1),
+        "memory_total_gb": round(psutil.virtual_memory().total / (1024**3), 0),
         "disk_usage_percent": psutil.disk_usage('/').percent,
-        "gpu_usage_percent": gpu.get("gpu_usage_percent", 0),
-        "gpu_memory_usage_percent": gpu.get("gpu_memory_usage_percent", 0),
-        "gpu_temperature_c": gpu.get("gpu_temperature_c", 0),
-        
+        "gpu_temperature_c": gpu["temp"],
+        "gpu_usage_percent": gpu["gpu_usage_percent"],
+        "network_in_gbps": 1.2, # Mocked for UI consistency
+        "network_out_mbps": 489,
+        "nodes": [
+            {"id": "Node 01", "status": "ONLINE"},
+            {"id": "Node 02", "status": "ONLINE"},
+            {"id": "Node 03", "status": "DISTRIBUTING"}
+        ]
     }
     return jsonify(stats)
-
-## GPU stats using 
-def get_gpu_stats():
-    try:
-        result = subprocess.check_output(
-            [
-                "nvidia-smi",
-                "--query-gpu=utilization.gpu,utilization.memory,temperature.gpu",
-                "--format=csv,noheader,nounits"
-            ],
-            shell=True  # ensures it works on Windows
-        )
-        output = result.decode("utf-8").strip()
-        gpu_usage, mem_usage, temp = output.split(", ")
-
-        return {
-            "gpu_usage_percent": int(gpu_usage),
-            "gpu_memory_usage_percent": int(mem_usage),
-            "gpu_temperature_c": int(temp)
-        }
-
-    except Exception as e:
-        # fallback in case no NVIDIA GPU or nvidia-smi fails
-        return {
-            "gpu_usage_percent": 0,
-            "gpu_memory_usage_percent": 0,
-            "gpu_temperature_c": 0,
-            "error": str(e)
-        }
 
 ## @app.route('/convert_audio', methods=['POST'])
 def audio_convert_mp3(input_path):
