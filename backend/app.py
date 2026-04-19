@@ -1,3 +1,5 @@
+import time
+
 import psutil
 from werkzeug.security import generate_password_hash, check_password_hash
 from av import VideoFrame
@@ -82,37 +84,77 @@ class ScreenTrack(VideoStreamTrack):
 
 kai_lock = threading.Lock()
 
+last_net_io = psutil.net_io_counters()
+last_time = time.time()
+
+def get_network_speed():
+    global last_net_io, last_time
+
+    current_net_io = psutil.net_io_counters()
+    current_time = time.time()
+
+    interval = current_time - last_time
+
+    bytes_sent = current_net_io.bytes_sent - last_net_io.bytes_sent
+    bytes_recv = current_net_io.bytes_recv - last_net_io.bytes_recv
+
+    last_net_io = current_net_io
+    last_time = current_time
+    
+    # Return speed in MB/s (divide by interval to handle varied polling rates)
+    return {
+        "upload_mbps": round((bytes_sent / (1024 * 1024)) / interval, 2),
+        "download_mbps": round((bytes_recv / (1024 * 1024)) / interval, 2)
+    }
+
 def get_gpu_stats():
     try:
-        # Querying NVIDIA GPU for utilization and temp
         result = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,utilization.memory,temperature.gpu", "--format=csv,noheader,nounits"],
-            shell=True, timeout=1
+            [
+                "nvidia-smi", 
+                "--query-gpu=utilization.gpu,memory.total,memory.used,temperature.gpu", 
+                "--format=csv,noheader,nounits"
+            ],
+            shell=True,
+            timeout=1
         )
-        gpu_usage, mem_usage, temp = result.decode("utf-8").strip().split(", ")
+        output = result.decode("utf-8").strip()
+        gpu_util, mem_total, mem_used, temp = output.split(", ")
+
         return {
-            "gpu_usage_percent": int(gpu_usage),
-            "gpu_mem_percent": int(mem_usage),
-            "temp": int(temp)
+            "load_percent": int(gpu_util),
+            "memory_total_mb": int(mem_total),
+            "memory_used_mb": int(mem_used),
+            "memory_percent": round((int(mem_used) / int(mem_total)) * 100, 1),
+            "temperature_c": int(temp)
         }
-    except:
-        return {"gpu_usage_percent": 0, "gpu_mem_percent": 0, "temp": 0}
+    except Exception as e:
+        # Fallback values if no NVIDIA GPU is found or command fails
+        return {
+            "load_percent": 0,
+            "memory_total_mb": 0,
+            "memory_used_mb": 0,
+            "memory_percent": 0,
+            "temperature_c": 0,
+            "error": str(e)
+        }
 
 @app.route('/health')
 def health():
+    net_speed = get_network_speed()
     gpu = get_gpu_stats()
-    # Mocking some data that requires specific hardware sensors for the UI
+
     stats = {
         "version": "v3.1",
         "cpu_usage_percent": psutil.cpu_percent(interval=0.1),
         "memory_usage_percent": psutil.virtual_memory().percent,
-        "memory_used_gb": round(psutil.virtual_memory().used / (1024**3), 1),
-        "memory_total_gb": round(psutil.virtual_memory().total / (1024**3), 0),
+        "memory_used_gb": round(psutil.virtual_memory().used / (1024**3), 2),
+        "memory_total_gb": round(psutil.virtual_memory().total / (1024**3), 1),
         "disk_usage_percent": psutil.disk_usage('/').percent,
-        "gpu_temperature_c": gpu["temp"],
-        "gpu_usage_percent": gpu["gpu_usage_percent"],
-        "network_in_gbps": 1.2, # Mocked for UI consistency
-        "network_out_mbps": 489,
+        "network_out_mbps": net_speed["upload_mbps"],
+        "network_in_mbps": net_speed["download_mbps"],
+
+        "gpu": gpu,
         "nodes": [
             {"id": "Node 01", "status": "ONLINE"},
             {"id": "Node 02", "status": "ONLINE"},
