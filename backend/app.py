@@ -1,4 +1,6 @@
 import time
+import random
+import secrets
 
 import psutil
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -14,14 +16,61 @@ import pyautogui
 from kai import process_text_command, transcribe_audio
 import threading
 import ffmpeg
+from flask_cors import CORS
+from functools import wraps
 
 
+
+# ── Shared Key Table (must match mobile app) ──────────────────────
+# The server picks a random key number, the client must reply with the matching secret.
+KAI_KEYS = {
+    "1": "kai-sec-alpha-87219",
+    "2": "kai-sec-beta-39281",
+    "3": "kai-sec-gamma-10482",
+    "4": "kai-sec-delta-58291",
+    "5": "kai-sec-epsilon-74920",
+}
+
+# Active session tokens (token -> expiry timestamp)
+active_sessions = {}
+SESSION_TTL = 3600  # 1 hour
+
+
+def generate_session_token():
+    """Generate a cryptographically secure session token."""
+    return secrets.token_hex(32)
+
+
+def is_valid_session(token):
+    """Check if a session token is valid and not expired."""
+    if token not in active_sessions:
+        return False
+    if time.time() > active_sessions[token]:
+        del active_sessions[token]
+        return False
+    return True
+
+
+def require_auth(f):
+    """Decorator: reject requests without a valid session token.
+       Exempt routes: /health, /api/handshake/*, /login, /"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({"error": "Missing or invalid Authorization header"}), 401
+        token = auth_header[7:]
+        if not is_valid_session(token):
+            return jsonify({"error": "Invalid or expired session token"}), 401
+        return f(*args, **kwargs)
+    return decorated
 
 
 
 # Create an instance of the Flask class
 app = Flask(__name__)
 app.secret_key = '4f8e3c7a9d2b4e8f98cbb1160d912af4912fb32b690efce5accf41bec0f23a80'
+CORS(app)  # Allow cross-origin requests from mobile app
 
 
 USERS = {
@@ -33,6 +82,73 @@ active_logins = {
     "mobile_user": False,
     "laptop_user": False
 }
+
+
+
+# ── Challenge-Response Handshake ──────────────────────────────────
+
+# Pending challenges: { challenge_id: { key_number, expires } }
+pending_challenges = {}
+
+@app.route('/api/handshake/init', methods=['POST'])
+def handshake_init():
+    """Step 1: Server picks a random key number and sends it to the client."""
+    key_number = str(random.choice(list(KAI_KEYS.keys())))
+    challenge_id = secrets.token_hex(16)
+    
+    pending_challenges[challenge_id] = {
+        "key_number": key_number,
+        "expires": time.time() + 30  # challenge valid for 30 seconds
+    }
+    
+    # Clean up expired challenges
+    expired = [cid for cid, c in pending_challenges.items() if time.time() > c["expires"]]
+    for cid in expired:
+        del pending_challenges[cid]
+    
+    return jsonify({
+        "challenge_id": challenge_id,
+        "key_number": key_number
+    })
+
+
+@app.route('/api/handshake/verify', methods=['POST'])
+def handshake_verify():
+    """Step 2: Client sends back the key matching the challenged key number."""
+    data = request.get_json()
+    challenge_id = data.get("challenge_id")
+    key_number = data.get("key_number")
+    key_value = data.get("key")
+    
+    if not challenge_id or challenge_id not in pending_challenges:
+        return jsonify({"error": "Invalid or expired challenge"}), 401
+    
+    challenge = pending_challenges.pop(challenge_id)
+    
+    # Check challenge hasn't expired
+    if time.time() > challenge["expires"]:
+        return jsonify({"error": "Challenge expired"}), 401
+    
+    # Check key number matches what the server asked for
+    if str(key_number) != challenge["key_number"]:
+        return jsonify({"error": "Key number mismatch"}), 401
+    
+    # Check the key value is correct
+    expected_key = KAI_KEYS.get(str(key_number))
+    if not expected_key or key_value != expected_key:
+        return jsonify({"error": "Invalid key"}), 401
+    
+    # All checks passed — issue a session token
+    token = generate_session_token()
+    active_sessions[token] = time.time() + SESSION_TTL
+    
+    print(f"[KAI AUTH] Device authenticated via key #{key_number}. Session granted.")
+    
+    return jsonify({
+        "status": "authenticated",
+        "session_token": token,
+        "expires_in": SESSION_TTL
+    })
 
 
 
@@ -140,6 +256,7 @@ def get_gpu_stats():
         }
 
 @app.route('/health')
+@require_auth
 def health():
     net_speed = get_network_speed()
     gpu = get_gpu_stats()
@@ -181,6 +298,7 @@ def audio_convert_mp3(input_path):
         return jsonify({"status":"error", "message":f"Error converting audio: {e.stderr.decode()}"})
 
 @app.route('/control', methods=['POST'])
+@require_auth
 def control():
     action = request.json.get('action')
     
@@ -281,6 +399,7 @@ async def offer():
 
 ## handling text input from broser
 @app.route('/process',methods=['POST'])
+@require_auth
 def process_command():
     data = request.get_json()
     user_input= data.get('command')
@@ -293,9 +412,9 @@ def process_command():
 
 
 
-
 ## removing audio file after playing it in browser
 @app.route('/delete_audio', methods=['POST'])
+@require_auth
 def delete_audio():
     try:
         os.remove("static\\audio\\response.mp3")
@@ -309,6 +428,7 @@ def delete_audio():
 
 ## receiving audio data from browser and converting it to text
 @app.route('/send_audio', methods=['POST'])
+@require_auth
 def audio_convert():
     blob = request.files['audio_data']
     target_dir = 'static/audio/userinputs'
@@ -325,6 +445,7 @@ def audio_convert():
 
 
 @app.route('/run_kai')
+@require_auth
 def run_kai():
     #running script execution in a separate thread
     threading.Thread(target=run_kai_script).start()
@@ -333,6 +454,7 @@ def run_kai():
 
 
 @app.route('/sleep')
+@require_auth
 def sleep():
     try:
         result = subprocess.Popen([sys.executable, 'sleep.py'],)
@@ -342,4 +464,4 @@ def sleep():
         return f'Error executing Sleep script: {e.stderr}'
     
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
