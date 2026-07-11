@@ -8,6 +8,33 @@ from aiohttp import web
 import aiohttp_cors
 from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack , AudioStreamTrack
 import subprocess
+import re
+
+def detect_audio_device():
+    try:
+        # Run ffmpeg to list DirectShow devices
+        cmd = ["ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy"]
+        # ffmpeg output goes to stderr
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        stderr = result.stderr or ""
+        
+        # Parse audio devices
+        audio_devices = re.findall(r'"([^"]+)"\s+\(audio\)', stderr)
+        if audio_devices:
+            # Prioritize Stereo Mix (for desktop loopback audio capture)
+            for dev in audio_devices:
+                if "stereo mix" in dev.lower():
+                    print(f"[Audio Stream] Auto-detected system sound device: {dev}")
+                    return dev
+            # Fall back to first audio recording device (like Microphone)
+            print(f"[Audio Stream] Fallback to recording device: {audio_devices[0]}")
+            return audio_devices[0]
+    except Exception as e:
+        print(f"[Audio Stream] Error detecting audio device: {e}")
+    
+    # Final default fallback if detection fails
+    return "Stereo Mix (Realtek(R) Audio)"
+
 
 
 """""""""
@@ -66,11 +93,12 @@ class systemAudioTrack(AudioStreamTrack):
     def __init__(self):
         super().__init__()
 
+        device_name = detect_audio_device()
         ffmpeg_cmd = [
             "ffmpeg",
             "-f", "dshow",
             "-i",
-            "audio=Stereo Mix (Realtek(R) Audio)", 
+            f"audio={device_name}", 
             "-ac",
             "2",
             "-ar",
@@ -94,14 +122,14 @@ class systemAudioTrack(AudioStreamTrack):
         num_bytes = self.samples_per_frame * self.channels * 2 
 
         loop = asyncio.get_event_loop()
-        pcm = await loop.run_in_executor(none, self.process.stdout.read, num_bytes)
+        pcm = await loop.run_in_executor(None, self.process.stdout.read, num_bytes)
 
         if not pcm:
             await asyncio.sleep(0.01)
             return await self.recv()
         
         audio_data = np.frombuffer(pcm, dtype=np.int16)
-        audio_data = audio_data.reshape(self.channels, -1)
+        audio_data = audio_data.reshape(1, -1)
 
         frame = AudioFrame.from_ndarray(audio_data, format="s16", layout="stereo")
         frame.sample_rate = 48000

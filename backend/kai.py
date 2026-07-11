@@ -15,7 +15,11 @@ WAKE_WORD = "kai"
 
 # OpenClaw Settings (Default port 18789)
 OPENCLAW_URL = "http://localhost:18789/v1/chat/completions"
+OLLAMA_DIRECT_URL = "http://localhost:11434/v1/chat/completions"
 MODEL_NAME = "gemma4:e4b" 
+
+# Keep-alive duration: model stays in VRAM for this long after the last request
+KEEP_ALIVE = "10m"
 
 load_dotenv()
 
@@ -42,22 +46,154 @@ def listen_for_command():
         except:
             return None
 
+
+# ── LLM Lifecycle Management ─────────────────────────────────────
+
+def warmup_model():
+    """Pre-load the LLM into GPU VRAM. Called after handshake.
+    Sends a minimal 1-token request to force Ollama to load model weights."""
+    payload = {
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "user", "content": "hi"}
+        ],
+        "stream": False,
+        "keep_alive": KEEP_ALIVE,
+        "options": {
+            "num_predict": 1  # Generate only 1 token — just enough to trigger loading
+        }
+    }
+    try:
+        print("[KAI] Warming up model — loading into VRAM...")
+        # Try OpenClaw first (so its skills/tools get initialized too)
+        response = requests.post(OPENCLAW_URL, json=payload, timeout=(5, 120))
+        if response.status_code == 200:
+            print("[KAI] Model warmed up successfully via OpenClaw — VRAM loaded.")
+            return True
+        else:
+            print(f"[KAI] OpenClaw warm-up returned status {response.status_code}, trying Ollama direct...")
+    except requests.exceptions.ConnectionError:
+        print("[KAI] OpenClaw unreachable for warm-up, trying Ollama direct...")
+    except Exception as e:
+        print(f"[KAI] OpenClaw warm-up error: {e}, trying Ollama direct...")
+
+    # Fallback: warm up via Ollama directly
+    try:
+        response = requests.post(OLLAMA_DIRECT_URL, json=payload, timeout=(5, 120))
+        if response.status_code == 200:
+            print("[KAI] Model warmed up successfully via Ollama direct — VRAM loaded.")
+            return True
+        else:
+            print(f"[KAI] Ollama direct warm-up returned status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"[KAI] Ollama direct warm-up also failed: {e}")
+        return False
+
+
+def unload_model():
+    """Immediately unload the LLM from GPU VRAM to free resources.
+    Sends keep_alive=0 to tell Ollama to release the model now."""
+    try:
+        payload = {
+            "model": MODEL_NAME,
+            "keep_alive": "0"
+        }
+        print("[KAI] Unloading model from VRAM...")
+        response = requests.post("http://localhost:11434/api/generate", json=payload, timeout=5)
+        if response.status_code == 200:
+            print("[KAI] Model unloaded — VRAM freed.")
+            return True
+        else:
+            print(f"[KAI] Unload returned status {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"[KAI] Failed to unload model: {e}")
+        return False
+
+
+def get_ai_status():
+    """Check the health of Ollama and OpenClaw. Returns a status dict."""
+    status = {
+        "ollama": {"reachable": False, "model_loaded": False},
+        "openclaw": {"reachable": False}
+    }
+
+    # Check Ollama
+    try:
+        r = requests.get("http://localhost:11434/api/tags", timeout=3)
+        if r.status_code == 200:
+            status["ollama"]["reachable"] = True
+            models = r.json().get("models", [])
+            for m in models:
+                if MODEL_NAME in m.get("name", ""):
+                    status["ollama"]["model_loaded"] = True
+                    status["ollama"]["model_name"] = m.get("name")
+                    status["ollama"]["size_gb"] = round(m.get("size", 0) / (1024**3), 1)
+    except Exception:
+        pass
+
+    # Check OpenClaw
+    try:
+        r = requests.get("http://localhost:18789/v1/models", timeout=3)
+        status["openclaw"]["reachable"] = r.status_code == 200
+    except Exception:
+        pass
+
+    # Check if model is currently loaded in memory via Ollama ps
+    try:
+        r = requests.get("http://localhost:11434/api/ps", timeout=3)
+        if r.status_code == 200:
+            running = r.json().get("models", [])
+            for m in running:
+                if MODEL_NAME in m.get("name", ""):
+                    status["ollama"]["model_running"] = True
+                    status["ollama"]["vram_used"] = m.get("size", 0)
+                    expires = m.get("expires_at", "")
+                    status["ollama"]["expires_at"] = expires
+    except Exception:
+        pass
+
+    # Overall verdict
+    if status["ollama"]["reachable"] and status["openclaw"]["reachable"]:
+        status["overall"] = "ALL_SYSTEMS_GO"
+    elif status["ollama"]["reachable"]:
+        status["overall"] = "OPENCLAW_DOWN"
+    else:
+        status["overall"] = "OLLAMA_DOWN"
+
+    return status
+
+
+# ── Core AI Query ─────────────────────────────────────────────────
+
 async def query_openclaw(user_input):
-    """Bridge to the local OpenClaw gateway."""
+    """Bridge to the local OpenClaw gateway with Ollama fallback."""
     payload = {
         "model": MODEL_NAME,
         "messages": [
             {"role": "system", "content": "You are K.A.I (Kinetic AI Interface), a witty AI assistant like Jarvis. Use your skills to control the local system. Be concise and professional."},
             {"role": "user", "content": user_input}
         ],
-        "stream": False
+        "stream": False,
+        "keep_alive": KEEP_ALIVE
     }
     try:
         # OpenClaw automatically triggers skills (system-control, etc.) 
         # if the prompt requires it before returning this text.
-        response = requests.post(OPENCLAW_URL, json=payload, timeout=45)
+        response = requests.post(OPENCLAW_URL, json=payload, timeout=(5, 120))
         response.raise_for_status()
         return response.json()['choices'][0]['message']['content']
+    except requests.exceptions.ConnectionError:
+        # OpenClaw is down — try Ollama directly (without agentic skills)
+        print("[KAI] OpenClaw unreachable. Falling back to Ollama direct.")
+        try:
+            response = requests.post(OLLAMA_DIRECT_URL, json=payload, timeout=(5, 120))
+            response.raise_for_status()
+            return response.json()['choices'][0]['message']['content']
+        except Exception as e:
+            print(f"[KAI] Ollama direct also failed: {e}")
+            return "Both OpenClaw and Ollama are unreachable, sir. Check if the services are running."
     except Exception as e:
         print(f"Core Error: {e}")
         return "I'm having trouble connecting to the local core, sir."

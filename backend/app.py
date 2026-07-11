@@ -13,11 +13,17 @@ import os
 import json
 import numpy as np
 import pyautogui
-from kai import process_text_command, transcribe_audio
+from kai import process_text_command, transcribe_audio, warmup_model, unload_model, get_ai_status
 import threading
 import ffmpeg
 from flask_cors import CORS
 from functools import wraps
+from command_executor import execute_command_internal, APP_WHITELIST, SAFE_ROOTS
+
+# In-memory command history audit log
+command_history = []
+MAX_HISTORY_LIMIT = 50
+
 
 
 
@@ -143,6 +149,11 @@ def handshake_verify():
     active_sessions[token] = time.time() + SESSION_TTL
     
     print(f"[KAI AUTH] Device authenticated via key #{key_number}. Session granted.")
+
+    # Warm up the LLM in the background (non-blocking)
+    # This pre-loads the model into GPU VRAM so first AI query is fast
+    threading.Thread(target=warmup_model, daemon=True).start()
+    print("[KAI AUTH] Model warm-up triggered in background.")
     
     return jsonify({
         "status": "authenticated",
@@ -462,6 +473,181 @@ def sleep():
         
     except subprocess.CalledProcessError as e:
         return f'Error executing Sleep script: {e.stderr}'
+
+# ── Command Centre Endpoints ──────────────────────────────────────
+
+@app.route('/api/command/categories', methods=['GET'])
+@require_auth
+def get_categories():
+    """Lists available commands, categories, whitelisted apps, and safe paths."""
+    categories = [
+        {
+            "id": "media",
+            "name": "Media Controller",
+            "icon": "music.note",
+            "commands": [
+                {"type": "media.playpause", "name": "Play / Pause", "icon": "playpause.fill"},
+                {"type": "media.previous", "name": "Previous Track", "icon": "backward.fill"},
+                {"type": "media.next", "name": "Next Track", "icon": "forward.fill"},
+                {"type": "media.volumeup", "name": "Volume Up", "icon": "speaker.wave.3.fill"},
+                {"type": "media.volumedown", "name": "Volume Down", "icon": "speaker.wave.1.fill"},
+                {"type": "media.mute", "name": "Mute", "icon": "speaker.slash.fill"},
+            ]
+        },
+        {
+            "id": "apps",
+            "name": "Applications",
+            "icon": "app.grid.3x3.fill",
+            "commands": [
+                {"type": "app.open", "name": "Web Browser", "icon": "globe", "payload": {"app": "browser"}},
+                {"type": "app.open", "name": "VS Code", "icon": "chevron.left.forwardslash.chevron.right", "payload": {"app": "vscode"}},
+                {"type": "app.open", "name": "File Explorer", "icon": "folder.fill", "payload": {"app": "explorer"}},
+                {"type": "app.open", "name": "Notepad", "icon": "doc.text.fill", "payload": {"app": "notepad"}},
+                {"type": "app.open", "name": "Discord", "icon": "discord", "payload": {"app": "discord"}},
+                {"type": "app.open", "name": "Spotify", "icon": "spotify", "payload": {"app": "spotify"}},
+                {"type": "app.open", "name": "Helldivers 2", "icon": "gamecontroller", "payload": {"app": "helldivers2"}},
+                {"type": "app.open", "name": "Apex Legends", "icon": "gamecontroller", "payload": {"app": "apexlegends"}}
+            ]
+        },
+        {
+            "id": "fs",
+            "name": "File Browser",
+            "icon": "folder.badge.gearshape",
+            "commands": [
+                {"type": "fs.list", "name": "Browse Files", "icon": "list.bullet.indent"},
+                {"type": "fs.open_file", "name": "Open File/Folder", "icon": "arrow.up.right.square"}
+            ],
+            "safe_roots": [{"name": os.path.basename(r) or r, "path": r} for r in SAFE_ROOTS]
+        },
+        {
+            "id": "kai",
+            "name": "KAI Assistant",
+            "icon": "wand.and.stars",
+            "commands": [
+                {"type": "kai.text_command", "name": "Send AI Prompt", "icon": "paperplane.fill"},
+                {"type": "kai.run_script", "name": "Run KAI Core", "icon": "play.fill"}
+            ]
+        },
+        {
+            "id": "audio",
+            "name": "Audio Level",
+            "icon": "speaker.wave.2.fill",
+            "commands": [
+                {"type": "audio.change_volume", "name": "Increase Volume", "icon": "plus", "payload": {"direction": "up", "steps": 2}},
+                {"type": "audio.change_volume", "name": "Decrease Volume", "icon": "minus", "payload": {"direction": "down", "steps": 2}}
+            ]
+        },
+        {
+            "id": "display",
+            "name": "Display Tools",
+            "icon": "macpro.gen1",
+            "commands": [
+                {"type": "display.screenshot", "name": "Capture Screen", "icon": "camera.fill"}
+            ]
+        }
+    ]
+    return jsonify({"status": "success", "categories": categories})
+
+@app.route('/api/command/execute', methods=['POST'])
+@require_auth
+def execute_command():
+    """Route to execute a command securely."""
+    data = request.get_json() or {}
+    cmd_type = data.get("type")
+    payload = data.get("payload") or {}
+
+    if not cmd_type:
+        return jsonify({"status": "error", "message": "Command type is required."}), 400
+
+    # Intercept KAI async/threaded commands
+    if cmd_type == "kai.text_command":
+        user_input = payload.get("command")
+        if not user_input:
+            return jsonify({"status": "error", "message": "AI command input is required."}), 400
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            result = loop.run_until_complete(process_text_command(user_input, for_browser=True))
+            # Log history
+            record = {"type": cmd_type, "status": "success", "result": result.get("response", {}).get("say", ""), "timestamp": time.time()}
+            command_history.insert(0, record)
+            if len(command_history) > MAX_HISTORY_LIMIT:
+                command_history.pop()
+            return jsonify(result)
+        except Exception as e:
+            record = {"type": cmd_type, "status": "failed", "result": str(e), "timestamp": time.time()}
+            command_history.insert(0, record)
+            return jsonify({"status": "error", "message": f"KAI execution failed: {str(e)}"}), 500
+
+    elif cmd_type == "kai.run_script":
+        try:
+            threading.Thread(target=run_kai_script).start()
+            record = {"type": cmd_type, "status": "success", "result": "KAI script triggered in background", "timestamp": time.time()}
+            command_history.insert(0, record)
+            if len(command_history) > MAX_HISTORY_LIMIT:
+                command_history.pop()
+            return jsonify({"status": "success", "message": "KAI script is running in the background."})
+        except Exception as e:
+            record = {"type": cmd_type, "status": "failed", "result": str(e), "timestamp": time.time()}
+            command_history.insert(0, record)
+            return jsonify({"status": "error", "message": f"Failed to run KAI: {str(e)}"}), 500
+
+    # Execute standard synchronous command
+    success, result = execute_command_internal(cmd_type, payload)
     
+    # Save to history log
+    record = {
+        "type": cmd_type,
+        "status": "success" if success else "failed",
+        "result": result if success else str(result),
+        "timestamp": time.time()
+    }
+    command_history.insert(0, record)
+    if len(command_history) > MAX_HISTORY_LIMIT:
+        command_history.pop()
+
+    if not success:
+        return jsonify({"status": "error", "message": result}), 400
+
+    return jsonify({"status": "success", "result": result})
+
+@app.route('/api/command/history', methods=['GET'])
+@require_auth
+def get_command_history():
+    """Retrieve recent command logs."""
+    limit = min(int(request.args.get("limit", 20)), MAX_HISTORY_LIMIT)
+    return jsonify({"status": "success", "history": command_history[:limit]})
+
+
+# ── AI Lifecycle Endpoints ────────────────────────────────────────
+
+@app.route('/api/ai/status')
+@require_auth
+def ai_status():
+    """Check the health of Ollama, OpenClaw, and model load state."""
+    status = get_ai_status()
+    return jsonify(status)
+
+
+@app.route('/api/ai/warmup', methods=['POST'])
+@require_auth
+def manual_warmup():
+    """Manually trigger LLM model loading into VRAM."""
+    threading.Thread(target=warmup_model, daemon=True).start()
+    return jsonify({"status": "warming_up", "message": "Model loading into VRAM in background."})
+
+
+@app.route('/api/ai/unload', methods=['POST'])
+@require_auth
+def manual_unload():
+    """Immediately unload the LLM from GPU VRAM to free resources."""
+    success = unload_model()
+    if success:
+        return jsonify({"status": "unloaded", "message": "Model removed from VRAM. GPU resources freed."})
+    else:
+        return jsonify({"status": "error", "message": "Failed to unload model."}), 500
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
