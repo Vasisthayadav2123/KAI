@@ -1,6 +1,7 @@
 import time
 import random
 import secrets
+import uuid
 
 import psutil
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -13,12 +14,15 @@ import os
 import json
 import numpy as np
 import pyautogui
-from kai import process_text_command, transcribe_audio, warmup_model, unload_model, get_ai_status
+from kai import process_text_command, transcribe_audio, warmup_model, unload_model, get_ai_status, stream_query_openclaw, only_transcribe, VOICE
 import threading
+import base64
+from flask_socketio import SocketIO, emit
 import ffmpeg
 from flask_cors import CORS
 from functools import wraps
 from command_executor import execute_command_internal, APP_WHITELIST, SAFE_ROOTS
+from diagnostics import start_diagnostics_monitor, active_ws_connections
 
 # In-memory command history audit log
 command_history = []
@@ -77,6 +81,7 @@ def require_auth(f):
 app = Flask(__name__)
 app.secret_key = '4f8e3c7a9d2b4e8f98cbb1160d912af4912fb32b690efce5accf41bec0f23a80'
 CORS(app)  # Allow cross-origin requests from mobile app
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 USERS = {
@@ -307,6 +312,24 @@ def audio_convert_mp3(input_path):
         return jsonify({"status":"success", "message":"Audio converted to mp3 successfully."})
     except ffmpeg.Error as e:
         return jsonify({"status":"error", "message":f"Error converting audio: {e.stderr.decode()}"})
+
+def convert_to_wav(input_path, output_path):
+    """Utility to transcode input audio (like .m4a, .caf, .webm) into 16kHz mono WAV."""
+    try:
+        (
+            ffmpeg
+            .input(input_path)
+            .output(output_path, format='wav', acodec='pcm_s16le', ac=1, ar='16000')
+            .run(overwrite_output=True)
+        )
+        if os.path.exists(input_path):
+            os.remove(input_path)
+        return True, "Success"
+    except ffmpeg.Error as e:
+        err_msg = e.stderr.decode() if e.stderr else str(e)
+        return False, f"FFmpeg error: {err_msg}"
+    except Exception as e:
+        return False, str(e)
 
 @app.route('/control', methods=['POST'])
 @require_auth
@@ -619,6 +642,90 @@ def get_command_history():
     limit = min(int(request.args.get("limit", 20)), MAX_HISTORY_LIMIT)
     return jsonify({"status": "success", "history": command_history[:limit]})
 
+@app.route('/api/command/voice', methods=['POST'])
+@require_auth
+def execute_voice_command():
+    """Endpoint for processing mobile audio recordings and returning text + TTS response."""
+    if 'audio_data' not in request.files:
+        return jsonify({"status": "error", "message": "No audio file provided"}), 400
+
+    audio_file = request.files['audio_data']
+    if audio_file.filename == '':
+        return jsonify({"status": "error", "message": "Empty filename"}), 400
+
+    userinputs_dir = os.path.join('static', 'audio', 'userinputs')
+    responses_dir = os.path.join('static', 'audio')
+    os.makedirs(userinputs_dir, exist_ok=True)
+    os.makedirs(responses_dir, exist_ok=True)
+
+    # Resource management: Clean up audio files older than 5 minutes
+    try:
+        current_time = time.time()
+        for folder in [userinputs_dir, responses_dir]:
+            for f in os.listdir(folder):
+                file_path = os.path.join(folder, f)
+                if os.path.isfile(file_path) and (current_time - os.path.getmtime(file_path)) > 300:
+                    if f not in ["dummy.wav", "response.mp3"]:
+                        os.remove(file_path)
+    except Exception as cleanup_err:
+        print(f"[KAI CLEANUP] Error cleaning up audio: {cleanup_err}")
+
+    # Generate isolated session UUID paths
+    unique_id = str(uuid.uuid4())
+    _, ext = os.path.splitext(audio_file.filename)
+    if not ext:
+        ext = '.m4a'
+
+    temp_input_path = os.path.join(userinputs_dir, f"{unique_id}{ext}")
+    temp_wav_path = os.path.join(userinputs_dir, f"{unique_id}.wav")
+    output_mp3_path = os.path.join(responses_dir, f"response_{unique_id}.mp3")
+
+    try:
+        audio_file.save(temp_input_path)
+        
+        # Transcode to WAV format
+        success, convert_msg = convert_to_wav(temp_input_path, temp_wav_path)
+        if not success:
+            return jsonify({"status": "error", "message": f"Audio transcoding failed: {convert_msg}"}), 500
+
+        # Run speech-to-text -> query LLM -> text-to-speech loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        result = loop.run_until_complete(transcribe_audio(temp_wav_path, output_file=output_mp3_path))
+        
+        if os.path.exists(temp_wav_path):
+            os.remove(temp_wav_path)
+
+        if result.get("status") == "error":
+            return jsonify(result), 500
+
+        # Log history
+        record = {
+            "type": "kai.voice_command",
+            "status": "success",
+            "result": f"Voice command: '{result.get('query')}' -> '{result.get('response', {}).get('say')}'",
+            "timestamp": time.time()
+        }
+        command_history.insert(0, record)
+        if len(command_history) > MAX_HISTORY_LIMIT:
+            command_history.pop()
+
+        return jsonify({
+            "status": "success",
+            "query": result.get("query", ""),
+            "reply": result.get("response", {}).get("say", ""),
+            "mp3": result.get("mp3")
+        })
+
+    except Exception as e:
+        # Cleanup
+        for p in [temp_input_path, temp_wav_path, output_mp3_path]:
+            if os.path.exists(p):
+                try: os.remove(p)
+                except: pass
+        return jsonify({"status": "error", "message": f"Voice command execution failed: {str(e)}"}), 500
+
 
 # ── AI Lifecycle Endpoints ────────────────────────────────────────
 
@@ -649,5 +756,146 @@ def manual_unload():
         return jsonify({"status": "error", "message": "Failed to unload model."}), 500
 
 
+# ── WebSockets Streaming Handlers ─────────────────────────────────
+
+@socketio.on('connect')
+def ws_connect(auth=None):
+    token = auth.get('token') if auth else None
+    if not token or not is_valid_session(token):
+        print("[KAI WS] Connection refused: invalid session token.")
+        return False
+    print(f"[KAI WS] Client connected: {request.sid}")
+    active_ws_connections.add(request.sid)
+
+@socketio.on('disconnect')
+def ws_disconnect():
+    print(f"[KAI WS] Client disconnected: {request.sid}")
+    active_ws_connections.discard(request.sid)
+
+@socketio.on('command')
+def ws_handle_command(data):
+    """Processes incoming client prompts or base64 audio commands."""
+    text = data.get('text')
+    audio_base64 = data.get('audio')
+    file_ext = data.get('ext', '.m4a')
+    sid = request.sid
+    
+    # Process in a background thread to prevent blocking WebSocket server loop
+    socketio.start_background_task(target=process_ws_command_background, text=text, audio_base64=audio_base64, file_ext=file_ext, sid=sid)
+
+def process_ws_command_background(text, audio_base64, file_ext, sid):
+    # Establish new event loop for async operations in this background thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    temp_input_path = None
+    temp_wav_path = None
+    
+    try:
+        user_input = text
+        
+        if audio_base64:
+            # Save and decode base64 audio
+            audio_bytes = base64.b64decode(audio_base64)
+            userinputs_dir = os.path.join('static', 'audio', 'userinputs')
+            os.makedirs(userinputs_dir, exist_ok=True)
+            unique_id = str(uuid.uuid4())
+            
+            temp_input_path = os.path.join(userinputs_dir, f"{unique_id}_ws_in{file_ext}")
+            temp_wav_path = os.path.join(userinputs_dir, f"{unique_id}_ws.wav")
+            
+            with open(temp_input_path, 'wb') as f:
+                f.write(audio_bytes)
+                
+            # Transcode
+            success, convert_msg = convert_to_wav(temp_input_path, temp_wav_path)
+            if not success:
+                socketio.emit('reply_error', {"message": f"Audio transcoding failed: {convert_msg}"}, to=sid)
+                return
+                
+            # Transcribe
+            try:
+                user_input = only_transcribe(temp_wav_path)
+            except Exception as stt_err:
+                socketio.emit('reply_error', {"message": f"Speech-to-text failed: {str(stt_err)}"}, to=sid)
+                return
+            finally:
+                if temp_wav_path and os.path.exists(temp_wav_path):
+                    try: os.remove(temp_wav_path)
+                    except: pass
+                    
+        if not user_input:
+            socketio.emit('reply_error', {"message": "Empty prompt received."}, to=sid)
+            return
+
+        # Emit reply_start with the query
+        socketio.emit('reply_start', {"query": user_input}, to=sid)
+
+        # Run streaming LLM + TTS pipeline
+        async def run_pipeline():
+            import edge_tts
+            full_reply_text = []
+            
+            async for sentence in stream_query_openclaw(user_input):
+                full_reply_text.append(sentence)
+                
+                # Stream TTS audio chunks
+                audio_chunks = []
+                try:
+                    communicate = edge_tts.Communicate(sentence, VOICE)
+                    async for chunk in communicate.stream():
+                        if chunk["type"] == "audio":
+                            audio_chunks.append(chunk["data"])
+                except Exception as tts_err:
+                    print(f"[KAI WS] TTS streaming failed for sentence '{sentence}': {tts_err}")
+                
+                audio_b64 = None
+                if audio_chunks:
+                    audio_b64 = base64.b64encode(b"".join(audio_chunks)).decode('utf-8')
+                    
+                socketio.emit('reply_chunk', {
+                    "text_chunk": sentence,
+                    "audio_chunk": audio_b64
+                }, to=sid)
+                
+            # Emit reply_end when finished
+            full_reply_str = " ".join(full_reply_text)
+            socketio.emit('reply_end', {"status": "done"}, to=sid)
+            
+            # Log history
+            record = {
+                "type": "kai.ws_voice_command" if audio_base64 else "kai.ws_text_command",
+                "status": "success",
+                "result": f"WS command: '{user_input}' -> '{full_reply_str}'",
+                "timestamp": time.time()
+            }
+            command_history.insert(0, record)
+            if len(command_history) > MAX_HISTORY_LIMIT:
+                command_history.pop()
+
+        loop.run_until_complete(run_pipeline())
+        
+    except Exception as e:
+        print(f"[KAI WS] Execution failed: {e}")
+        socketio.emit('reply_error', {"message": f"Execution failed: {str(e)}"}, to=sid)
+        
+    finally:
+        for p in [temp_input_path, temp_wav_path]:
+            if p and os.path.exists(p):
+                try: os.remove(p)
+                except: pass
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    import os
+    # Start background dependency services only in the main/parent process.
+    # This avoids double-spawning services in the Flask reloader child process,
+    # and keeps the background services running across code reloads.
+    if os.environ.get("WERKZEUG_RUN_MAIN") != "true":
+        from service_manager import start_all_services_async
+        start_all_services_async()
+        
+        # Start background diagnostics monitoring thread
+        start_diagnostics_monitor()
+
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)

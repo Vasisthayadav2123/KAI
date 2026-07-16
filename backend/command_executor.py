@@ -124,6 +124,12 @@ def execute_command_internal(cmd_type, payload):
             img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
             return True, {"image": f"data:image/jpeg;base64,{img_str}"}
 
+        # --- SYSTEM DIAGNOSTICS ---
+        elif cmd_type == "system.diagnostics":
+            import diagnostics
+            current_stats = diagnostics.collect_full_diagnostics()
+            return True, current_stats
+
         # --- KAI COMMANDS ---
         # Note: kai.text_command and kai.run_script will be intercepted and handled 
         # asynchronously inside app.py since they might need to run async event loops or separate threads.
