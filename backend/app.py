@@ -302,32 +302,45 @@ def audio_convert_mp3(input_path):
     output_path = 'static/audio/userinputs/user_command_audio.wav'
     
     try:
-        (
-            ffmpeg
-            .input(input_path)
-            .output(output_path, format='wav', acodec='pcm_s16le', ac=1, ar='16000')
-            .run(overwrite_output=True)
-        )
+        cmd = [
+            'ffmpeg',
+            '-y',
+            '-i', input_path,
+            '-f', 'wav',
+            '-acodec', 'pcm_s16le',
+            '-ac', '1',
+            '-ar', '16000',
+            output_path
+        ]
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
         os.remove(input_path)  # Remove the original
         return jsonify({"status":"success", "message":"Audio converted to mp3 successfully."})
-    except ffmpeg.Error as e:
-        return jsonify({"status":"error", "message":f"Error converting audio: {e.stderr.decode()}"})
+    except subprocess.CalledProcessError as e:
+        err_msg = e.stderr if e.stderr else str(e)
+        return jsonify({"status":"error", "message":f"Error converting audio: {err_msg}"})
+    except Exception as e:
+        return jsonify({"status":"error", "message":f"Error converting audio: {str(e)}"})
 
 def convert_to_wav(input_path, output_path):
     """Utility to transcode input audio (like .m4a, .caf, .webm) into 16kHz mono WAV."""
     try:
-        (
-            ffmpeg
-            .input(input_path)
-            .output(output_path, format='wav', acodec='pcm_s16le', ac=1, ar='16000')
-            .run(overwrite_output=True)
-        )
+        cmd = [
+            'ffmpeg',
+            '-y',
+            '-i', input_path,
+            '-f', 'wav',
+            '-acodec', 'pcm_s16le',
+            '-ac', '1',
+            '-ar', '16000',
+            output_path
+        ]
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
         if os.path.exists(input_path):
             os.remove(input_path)
         return True, "Success"
-    except ffmpeg.Error as e:
-        err_msg = e.stderr.decode() if e.stderr else str(e)
-        return False, f"FFmpeg error: {err_msg}"
+    except subprocess.CalledProcessError as e:
+        err_msg = e.stderr if e.stderr else str(e)
+        return False, f"FFmpeg subprocess error: {err_msg}"
     except Exception as e:
         return False, str(e)
 
@@ -351,6 +364,71 @@ def control():
     
     return jsonify({'status': 'ok', 'action': action})
 
+
+@app.route('/api/control/touch', methods=['POST'])
+@require_auth
+def control_touch():
+    data = request.json or {}
+    action_type = data.get('type')
+    nx = data.get('nx')
+    ny = data.get('ny')
+    orientation = data.get('orientation', 'landscape')
+    
+    if nx is None or ny is None:
+        return jsonify({'status': 'error', 'message': 'Missing coordinates'}), 400
+        
+    try:
+        # Disable pyautogui fail-safe during remote touch to prevent crashes at coordinates (0,0)
+        pyautogui.FAILSAFE = False
+        
+        screen_w, screen_h = pyautogui.size()
+        x = int(nx * screen_w)
+        y = int(ny * screen_h)
+        
+        if action_type == 'move':
+            pyautogui.moveTo(x, y)
+        elif action_type == 'click':
+            pyautogui.click(x, y)
+        elif action_type == 'double_click':
+            pyautogui.doubleClick(x, y)
+        elif action_type == 'right_click':
+            pyautogui.rightClick(x, y)
+        elif action_type == 'scroll':
+            dy = data.get('dy', 0)
+            pyautogui.scroll(int(dy * 100))
+        elif action_type == 'drag':
+            drag_state = data.get('drag_state')
+            if drag_state == 'start':
+                pyautogui.mouseDown(x, y)
+            elif drag_state == 'drag':
+                pyautogui.moveTo(x, y)
+            elif drag_state == 'end':
+                pyautogui.mouseUp(x, y)
+        else:
+            return jsonify({'status': 'error', 'message': f'Unknown action type: {action_type}'}), 400
+            
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/control/keyboard', methods=['POST'])
+@require_auth
+def control_keyboard():
+    data = request.json or {}
+    text = data.get('text')
+    key = data.get('key')
+    
+    try:
+        if key:
+            pyautogui.press(key)
+        elif text:
+            pyautogui.write(text)
+        else:
+            return jsonify({'status': 'error', 'message': 'Missing text or key'}), 400
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 # Define a route and a view function

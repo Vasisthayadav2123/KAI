@@ -461,9 +461,9 @@ async def process_text_command(user_input, for_browser=False, output_file=None):
 
 async def transcribe_audio(file_path, output_file=None):
     """Converts recorded browser audio (.wav) to text."""
-    with sr.AudioFile(file_path) as source:
-        audio = recognizer.record(source)
     try:
+        with sr.AudioFile(file_path) as source:
+            audio = recognizer.record(source)
         text = recognizer.recognize_google(audio)
         result = await process_text_command(text, for_browser=True, output_file=output_file)
         result["query"] = text
