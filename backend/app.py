@@ -95,6 +95,10 @@ active_logins = {
 }
 
 
+@app.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({"status": "ok", "message": "pong"})
+
 
 # ── Challenge-Response Handshake ──────────────────────────────────
 
